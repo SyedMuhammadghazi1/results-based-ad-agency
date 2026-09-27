@@ -1,8 +1,8 @@
 import { verifyShopifyHmac } from "@/lib/crypto";
 import { normalizeShopifyWebhook } from "@/lib/revenue-sources";
-import { handleRouteError, jsonError } from "@/server/http";
+import { handleRouteError, jsonError, rateLimitedResponse } from "@/server/http";
 import { loadWebhookIntegration } from "@/server/integrations";
-import { rateLimit, rateLimitedResponse } from "@/server/rate-limit";
+import { rateLimit } from "@/server/rate-limit";
 import { handleRevenueWebhook } from "@/server/webhooks";
 
 export const dynamic = "force-dynamic";

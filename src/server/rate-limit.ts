@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
-import { jsonError } from "./http";
 
 /**
  * Postgres-backed fixed-window rate limiter. One row per key; the window resets in the same
@@ -39,14 +38,6 @@ export async function rateLimit(
     limit,
     resetAt: new Date(start.getTime() + windowSec * 1000),
   };
-}
-
-export function rateLimitedResponse(r: RateLimitResult, extraHeaders?: HeadersInit) {
-  const retryAfter = Math.max(1, Math.ceil((r.resetAt.getTime() - Date.now()) / 1000));
-  return jsonError(429, "rate_limited", "Too many requests", {
-    "retry-after": String(retryAfter),
-    ...Object.fromEntries(new Headers(extraHeaders).entries()),
-  });
 }
 
 export async function purgeExpiredRateLimits(olderThan: Date): Promise<number> {

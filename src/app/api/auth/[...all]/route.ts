@@ -1,7 +1,7 @@
 import { toNextJsHandler } from "better-auth/next-js";
 import { auth } from "@/server/auth";
-import { clientIp } from "@/server/http";
-import { rateLimit, rateLimitedResponse } from "@/server/rate-limit";
+import { clientIp, rateLimitedResponse } from "@/server/http";
+import { rateLimit } from "@/server/rate-limit";
 
 const handlers = toNextJsHandler(auth);
 

@@ -1,7 +1,7 @@
 import { normalizeClientStripeEvent } from "@/lib/revenue-sources";
-import { handleRouteError, jsonError } from "@/server/http";
+import { handleRouteError, jsonError, rateLimitedResponse } from "@/server/http";
 import { loadWebhookIntegration } from "@/server/integrations";
-import { rateLimit, rateLimitedResponse } from "@/server/rate-limit";
+import { rateLimit } from "@/server/rate-limit";
 import { constructStripeEvent } from "@/server/stripe";
 import { handleRevenueWebhook } from "@/server/webhooks";
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { touchPayloadSchema } from "@/lib/tracking";
-import { clientIp, handleRouteError, jsonError } from "@/server/http";
-import { rateLimit, rateLimitedResponse } from "@/server/rate-limit";
+import { clientIp, handleRouteError, jsonError, rateLimitedResponse } from "@/server/http";
+import { rateLimit } from "@/server/rate-limit";
 import { corsHeaders, ingestTouch } from "@/server/tracking";
 
 export const dynamic = "force-dynamic";

@@ -27,15 +27,13 @@ describe("budget-guard", () => {
     const now = new Date("2026-09-20T12:00:00Z");
     const { org, a, b } = await client("300"); // $300 cap
     // $280 already spent earlier this month.
-    await db
-      .insert(adSpendDaily)
-      .values({
-        orgId: org.id,
-        campaignId: a.id,
-        date: "2026-09-10",
-        spendMinor: 28_000,
-        currency: "USD",
-      });
+    await db.insert(adSpendDaily).values({
+      orgId: org.id,
+      campaignId: a.id,
+      date: "2026-09-10",
+      spendMinor: 28_000,
+      currency: "USD",
+    });
 
     const sandbox = new SandboxConnector();
     const summary = await runBudgetGuard({ now, resolve: async () => sandbox });
@@ -68,25 +66,21 @@ describe("budget-guard", () => {
   it("warns near the cap without pausing", async () => {
     const now = new Date("2026-09-20T12:00:00Z");
     const { org, a } = await client("1000");
-    await db
-      .insert(adSpendDaily)
-      .values({
-        orgId: org.id,
-        campaignId: a.id,
-        date: "2026-09-05",
-        spendMinor: 80_000,
-        currency: "USD",
-      });
+    await db.insert(adSpendDaily).values({
+      orgId: org.id,
+      campaignId: a.id,
+      date: "2026-09-05",
+      spendMinor: 80_000,
+      currency: "USD",
+    });
     // Connector reports no spend today, so MTD = $920 = 92% of the $1,000 cap.
-    await db
-      .insert(adSpendDaily)
-      .values({
-        orgId: org.id,
-        campaignId: a.id,
-        date: "2026-09-06",
-        spendMinor: 12_000,
-        currency: "USD",
-      });
+    await db.insert(adSpendDaily).values({
+      orgId: org.id,
+      campaignId: a.id,
+      date: "2026-09-06",
+      spendMinor: 12_000,
+      currency: "USD",
+    });
     const zero = new SandboxConnector();
     zero.fetchDailySpend = async () => [];
     const summary = await runBudgetGuard({ now, resolve: async () => zero });

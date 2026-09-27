@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { logger } from "./logger";
+import type { RateLimitResult } from "./rate-limit";
 
 export class ApiError extends Error {
   constructor(
@@ -52,4 +53,12 @@ export function bearerToken(headers: Headers): string | null {
   if (!h) return null;
   const m = /^Bearer\s+(.+)$/i.exec(h.trim());
   return m ? m[1]!.trim() : null;
+}
+
+export function rateLimitedResponse(r: RateLimitResult, extraHeaders?: HeadersInit) {
+  const retryAfter = Math.max(1, Math.ceil((r.resetAt.getTime() - Date.now()) / 1000));
+  return jsonError(429, "rate_limited", "Too many requests", {
+    "retry-after": String(retryAfter),
+    ...Object.fromEntries(new Headers(extraHeaders).entries()),
+  });
 }

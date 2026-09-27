@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { normalizeS2sEvent, s2sEventSchema } from "@/lib/revenue-sources";
 import { processRevenueEvent } from "@/server/conversions";
-import { bearerToken, handleRouteError, jsonError } from "@/server/http";
+import { bearerToken, handleRouteError, jsonError, rateLimitedResponse } from "@/server/http";
 import { findOrgByApiKey } from "@/server/orgs";
-import { rateLimit, rateLimitedResponse } from "@/server/rate-limit";
+import { rateLimit } from "@/server/rate-limit";
 
 export const dynamic = "force-dynamic";
 

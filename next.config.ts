@@ -20,7 +20,6 @@ const csp = [
   "base-uri 'self'",
   "form-action 'self' https://checkout.stripe.com",
   "object-src 'none'",
-  ...(isDev ? [] : ["upgrade-insecure-requests"]),
 ].join("; ");
 
 const securityHeaders = [

@@ -227,6 +227,24 @@ describe("client Stripe events", () => {
     ).toMatchObject({ kind: "ignored" });
   });
 
+  it("ignores test-mode events (no real money), like Shopify test orders", () => {
+    for (const e of [
+      event("checkout.session.completed", session),
+      event("charge.refunded", { id: "ch_t", amount_refunded: 1, currency: "usd" }),
+    ]) {
+      expect(normalizeClientStripeEvent({ ...e, livemode: false })).toEqual({
+        kind: "ignored",
+        reason: "test_mode",
+      });
+    }
+    expect(
+      normalizeClientStripeEvent({
+        ...event("checkout.session.completed", session),
+        livemode: true,
+      }),
+    ).toMatchObject({ kind: "conversion" });
+  });
+
   it("charge.refunded → cumulative refund keyed by charge + amount", () => {
     const charge = {
       id: "ch_1",

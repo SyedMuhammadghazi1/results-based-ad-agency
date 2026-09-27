@@ -236,7 +236,13 @@ const stripeChargeSchema = z.object({
   payment_intent: z.union([z.string(), z.object({ id: z.string() })]).nullish(),
 });
 
-type StripeLikeEvent = { id: string; type: string; created: number; data: { object: unknown } };
+type StripeLikeEvent = {
+  id: string;
+  type: string;
+  created: number;
+  livemode?: boolean;
+  data: { object: unknown };
+};
 
 function idOf(v: string | { id: string } | null | undefined): string | null {
   if (!v) return null;
@@ -244,6 +250,8 @@ function idOf(v: string | { id: string } | null | undefined): string | null {
 }
 
 export function normalizeClientStripeEvent(event: StripeLikeEvent): RevenueEvent {
+  // Test-mode payments are not revenue (same rule as Shopify test orders): never bill a fee on them.
+  if (event.livemode === false) return { kind: "ignored", reason: "test_mode" };
   const occurredAt = new Date(event.created * 1000);
   if (
     event.type === "checkout.session.completed" ||

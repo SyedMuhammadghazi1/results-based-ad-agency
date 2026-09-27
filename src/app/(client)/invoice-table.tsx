@@ -13,7 +13,7 @@ export function InvoiceTable({ rows }: { rows: BillingPeriod[] }) {
   }
   return (
     <div className="overflow-x-auto">
-      <table className="table">
+      <table className="table table-nowrap">
         <thead>
           <tr>
             <th scope="col">Period</th>

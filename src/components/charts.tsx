@@ -209,7 +209,8 @@ export function RevenueColumnChart({
   );
 }
 
-type Series = { name: string; color: string; points: Point[] };
+/** `label` is the short direct label drawn at the line end (the legend carries `name`). */
+type Series = { name: string; label: string; color: string; points: Point[] };
 
 /** Two-series line chart with a crosshair (operator view: spend vs attributed revenue). */
 export function DualLineChart({
@@ -228,10 +229,13 @@ export function DualLineChart({
     () => niceMax(Math.max(0, ...series.flatMap((s) => s.points.map((p) => p.amountMinor)))),
     [series],
   );
-  const innerW = W - PAD.left - PAD.right - 56;
+  const innerW = W - PAD.left - PAD.right - 64;
   const innerH = H - PAD.top - PAD.bottom;
   const x = (i: number) => PAD.left + (dates.length <= 1 ? 0 : (innerW * i) / (dates.length - 1));
   const y = (v: number) => PAD.top + innerH - (Math.max(v, 0) / max) * innerH;
+  // Direct end labels only when they don't collide; the legend always carries identity.
+  const ends = series.map((s) => y(s.points[s.points.length - 1]?.amountMinor ?? 0));
+  const endLabelsFit = Math.abs((ends[0] ?? 0) - (ends[1] ?? 0)) >= 14;
 
   function onPointerMove(e: React.PointerEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -310,7 +314,7 @@ export function DualLineChart({
             strokeWidth={1}
           />
         ) : null}
-        {series.map((s) => {
+        {series.map((s, si) => {
           const d = s.points
             .map((p, i) => `${i === 0 ? "M" : "L"}${x(i)},${y(p.amountMinor)}`)
             .join(" ");
@@ -335,14 +339,17 @@ export function DualLineChart({
                     stroke="var(--color-surface)"
                     strokeWidth={2}
                   />
-                  <text
-                    x={x(s.points.length - 1) + 8}
-                    y={y(last.amountMinor) + 4}
-                    fontSize={11}
-                    fill="var(--color-ink-2)"
-                  >
-                    {s.name}
-                  </text>
+                  {endLabelsFit ? (
+                    <text
+                      x={x(s.points.length - 1) + 8}
+                      y={y(last.amountMinor) + 4}
+                      fontSize={11}
+                      fill="var(--color-ink-2)"
+                      data-series={si}
+                    >
+                      {s.label}
+                    </text>
+                  ) : null}
                 </>
               ) : null}
               {active !== null && s.points[active] ? (

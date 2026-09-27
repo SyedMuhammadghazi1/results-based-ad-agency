@@ -27,12 +27,19 @@ body {
   color: var(--color-ink);
 }
 
+/* Horizontal scrollers must be the containing block of their absolutely positioned children
+   (e.g. sr-only table headers), otherwise those escape the clip and widen the page. */
+.overflow-x-auto {
+  position: relative;
+}
+
 @layer components {
   .container-page {
     @apply mx-auto w-full max-w-6xl px-4 sm:px-6;
   }
   .card {
-    @apply rounded-xl border border-hairline bg-surface p-5 shadow-sm;
+    /* min-w-0 lets cards shrink inside grid/flex tracks so wide tables scroll inside them. */
+    @apply min-w-0 rounded-xl border border-hairline bg-surface p-5 shadow-sm;
   }
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 disabled:cursor-not-allowed disabled:opacity-60;
@@ -72,6 +79,10 @@ body {
   }
   .table td {
     @apply border-b border-hairline px-3 py-2 align-top;
+  }
+  .table-nowrap td,
+  .table-nowrap th {
+    @apply whitespace-nowrap;
   }
   .tabular {
     font-variant-numeric: tabular-nums;

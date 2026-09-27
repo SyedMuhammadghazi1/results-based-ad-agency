@@ -11,7 +11,7 @@ export function OrdersTable({ rows }: { rows: AttributedOrder[] }) {
   }
   return (
     <div className="overflow-x-auto">
-      <table className="table" data-testid="orders-table">
+      <table className="table table-nowrap" data-testid="orders-table">
         <thead>
           <tr>
             <th scope="col">Date (UTC)</th>

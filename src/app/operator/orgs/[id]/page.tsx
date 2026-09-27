@@ -75,8 +75,18 @@ export default async function OrgDetail({ params }: { params: Promise<{ id: stri
             currency={org.currency}
             title="Daily attributed revenue and ad spend, last 30 days"
             series={[
-              { name: "Attributed revenue", color: "var(--color-series-1)", points: perf.revenue },
-              { name: "Ad spend", color: "var(--color-series-2)", points: perf.spend },
+              {
+                name: "Attributed revenue",
+                label: "Revenue",
+                color: "var(--color-series-1)",
+                points: perf.revenue,
+              },
+              {
+                name: "Ad spend",
+                label: "Spend",
+                color: "var(--color-series-2)",
+                points: perf.spend,
+              },
             ]}
           />
         </section>

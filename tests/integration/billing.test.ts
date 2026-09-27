@@ -438,6 +438,56 @@ describe("invoice webhooks and dunning", () => {
     expect(after!.paidAt).not.toBeNull();
   });
 
+  it("a late invoice.payment_failed / marked_uncollectible never reopens a paid invoice", async () => {
+    const { row, org, campaignId } = await issuedInvoice();
+    await platformEvent(invoiceEvent("evt_paid_2", "invoice.paid", row.stripeInvoiceId!));
+    outbox.length = 0;
+
+    // Stripe does not guarantee ordering; retries of an earlier failed delivery arrive late.
+    for (const [id, type] of [
+      ["evt_failed_1", "invoice.payment_failed"],
+      ["evt_uncollectible_1", "invoice.marked_uncollectible"],
+    ] as const) {
+      const res = await platformEvent(invoiceEvent(id, type, row.stripeInvoiceId!));
+      expect(res.status).toBe(200);
+    }
+    const [after] = await db.select().from(billingPeriods);
+    expect(after).toMatchObject({ status: "paid", lastPaymentError: null });
+    expect(outbox).toHaveLength(0);
+    expect(
+      (await db.select().from(alerts).where(eq(alerts.orgId, org.id))).some(
+        (a) => a.kind === "payment_failed",
+      ),
+    ).toBe(false);
+
+    // …so dunning never pauses a client who paid.
+    const sandbox = new SandboxConnector();
+    expect(
+      await runDunningJob({
+        now: new Date(row.issuedAt!.getTime() + 30 * 86_400_000),
+        resolve: async () => sandbox,
+      }),
+    ).toMatchObject({ overdueInvoices: 0, orgsPaused: 0 });
+    const [camp] = await db.select().from(campaigns).where(eq(campaigns.id, campaignId));
+    expect(camp!.status).toBe("active");
+  });
+
+  it("voiding (or writing off) the overdue invoice lifts the dunning hold", async () => {
+    const { row, org } = await issuedInvoice();
+    const sandbox = new SandboxConnector();
+    await runDunningJob({
+      now: new Date(row.issuedAt!.getTime() + 15 * 86_400_000),
+      resolve: async () => sandbox,
+    });
+    expect((await getOrg(org.id))!.dunningPausedAt).not.toBeNull();
+
+    await platformEvent(invoiceEvent("evt_void_1", "invoice.voided", row.stripeInvoiceId!));
+    const [after] = await db.select().from(billingPeriods);
+    expect(after!.status).toBe("void");
+    // Otherwise the org stays blocked forever: launchBlocker refuses while the flag is set.
+    expect((await getOrg(org.id))!.dunningPausedAt).toBeNull();
+  });
+
   it("rejects webhooks with a bad signature", async () => {
     const res = await platformEvent(invoiceEvent("evt_x", "invoice.paid", "in_x"), "whsec_wrong");
     expect(res.status).toBe(400);

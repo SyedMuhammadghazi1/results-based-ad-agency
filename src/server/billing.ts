@@ -1,4 +1,16 @@
-import { and, desc, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  notInArray,
+  or,
+  sql,
+} from "drizzle-orm";
 import type Stripe from "stripe";
 import { db } from "@/db";
 import {
@@ -512,14 +524,22 @@ export async function handlePlatformStripeEvent(
       const inv = event.data.object;
       const found = await periodByInvoice(inv.id);
       if (!found) break;
-      await db
+      // Stripe does not guarantee event order: a late failure never reopens a settled invoice.
+      const updated = await db
         .update(billingPeriods)
         .set({
           status: "payment_failed",
           lastPaymentError: inv.last_finalization_error?.message ?? "Payment failed",
           updatedAt: now,
         })
-        .where(eq(billingPeriods.id, found.period.id));
+        .where(
+          and(
+            eq(billingPeriods.id, found.period.id),
+            notInArray(billingPeriods.status, ["paid", "void", "uncollectible"]),
+          ),
+        )
+        .returning({ id: billingPeriods.id });
+      if (updated.length === 0) break;
       await raiseAlert({
         orgId: found.org.id,
         kind: "payment_failed",
@@ -538,10 +558,14 @@ export async function handlePlatformStripeEvent(
     case "invoice.marked_uncollectible": {
       const found = await periodByInvoice(event.data.object.id);
       if (!found) break;
+      // An uncollectible invoice can still be paid later; a late event must not undo "paid".
       await db
         .update(billingPeriods)
         .set({ status: event.type === "invoice.voided" ? "void" : "uncollectible", updatedAt: now })
-        .where(eq(billingPeriods.id, found.period.id));
+        .where(and(eq(billingPeriods.id, found.period.id), ne(billingPeriods.status, "paid")));
+      // It no longer counts as overdue; without this the dunning hold (which blocks every
+      // campaign launch) could never be lifted.
+      if (found.org.dunningPausedAt) await clearDunningIfSettled(found.org.id, now);
       break;
     }
     default:

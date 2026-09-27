@@ -1,0 +1,53 @@
+# Optional scheduler for hosts without built-in cron (Vercel users can rely on vercel.json).
+# Calls POST /api/cron/<job> with the CRON_SECRET bearer token. Skips cleanly when unconfigured.
+name: Scheduled jobs
+
+on:
+  schedule:
+    - cron: "5 * * * *" # budget-guard (hourly)
+    - cron: "15 4 * * *" # sync-spend (daily)
+    - cron: "30 7 * * *" # dunning (daily)
+    - cron: "45 3 * * *" # cleanup (daily)
+    - cron: "0 6 1 * *" # monthly-billing (1st of month, UTC)
+    - cron: "0 13 * * 1" # weekly-revenue-report (Mondays)
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Job to run"
+        required: true
+        type: choice
+        options:
+          [budget-guard, sync-spend, dunning, cleanup, monthly-billing, weekly-revenue-report]
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Resolve job
+        id: job
+        run: |
+          case "${{ github.event.schedule }}" in
+            "5 * * * *") JOB=budget-guard ;;
+            "15 4 * * *") JOB=sync-spend ;;
+            "30 7 * * *") JOB=dunning ;;
+            "45 3 * * *") JOB=cleanup ;;
+            "0 6 1 * *") JOB=monthly-billing ;;
+            "0 13 * * 1") JOB=weekly-revenue-report ;;
+            *) JOB="${{ inputs.job }}" ;;
+          esac
+          echo "name=$JOB" >> "$GITHUB_OUTPUT"
+      - name: Call cron endpoint
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "::notice::APP_URL / CRON_SECRET not configured — skipping ${{ steps.job.outputs.name }}."
+            exit 0
+          fi
+          curl -fsS --max-time 300 -X POST -H "Authorization: Bearer $CRON_SECRET" \
+            "$APP_URL/api/cron/${{ steps.job.outputs.name }}"

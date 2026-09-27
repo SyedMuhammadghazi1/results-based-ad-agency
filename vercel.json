@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    { "path": "/api/cron/budget-guard", "schedule": "5 * * * *" },
+    { "path": "/api/cron/sync-spend", "schedule": "15 4 * * *" },
+    { "path": "/api/cron/dunning", "schedule": "30 7 * * *" },
+    { "path": "/api/cron/cleanup", "schedule": "45 3 * * *" },
+    { "path": "/api/cron/monthly-billing", "schedule": "0 6 1 * *" },
+    { "path": "/api/cron/weekly-revenue-report", "schedule": "0 13 * * 1" }
+  ]
+}

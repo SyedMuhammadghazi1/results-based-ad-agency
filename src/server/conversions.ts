@@ -21,7 +21,7 @@ import type {
   RevenueEvent,
 } from "@/lib/revenue-sources";
 import { logger } from "./logger";
-import { activeAgreement } from "./orgs";
+import { agreementInForce } from "./orgs";
 
 export type ConversionOutcome =
   | { status: "recorded"; conversionId: string; attributed: boolean; reason: string }
@@ -47,7 +47,9 @@ async function attributionFor(
   org: Organization,
   ev: NormalizedConversion,
 ): Promise<{ result: AttributionResult; agreementId: string | null; feeRateBps: number | null }> {
-  const agreement = await activeAgreement(org.id);
+  // The agreement IN FORCE when the order happened: its fee rate and window apply. Orders placed
+  // before the client accepted any agreement are never billable.
+  const agreement = await agreementInForce(org.id, ev.occurredAt);
   if (!agreement) {
     return {
       result: { attributed: false, reason: "no_agreement" },

@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -101,6 +101,17 @@ export async function activeAgreement(orgId: string): Promise<Agreement | null> 
     .select()
     .from(agreements)
     .where(and(eq(agreements.orgId, orgId), isNull(agreements.supersededAt)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** The agreement in force at `at`: the latest one accepted at or before that instant. */
+export async function agreementInForce(orgId: string, at: Date): Promise<Agreement | null> {
+  const rows = await db
+    .select()
+    .from(agreements)
+    .where(and(eq(agreements.orgId, orgId), lte(agreements.acceptedAt, at)))
+    .orderBy(desc(agreements.acceptedAt))
     .limit(1);
   return rows[0] ?? null;
 }

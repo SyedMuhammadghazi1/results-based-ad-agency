@@ -310,14 +310,20 @@ export async function issueStripeInvoice(
   }
 }
 
-/** Orgs that had an agreement in force at some point before the period ended. */
+/**
+ * Orgs to bill for a period: an agreement was in force before the period ended, or there is
+ * unbilled attributed revenue (or refunds) dated before the period end.
+ */
 export async function billableOrgs(period: Period): Promise<Organization[]> {
+  const end = period.end.toISOString();
   return db
-    .selectDistinct({ org: organizations })
+    .select()
     .from(organizations)
-    .innerJoin(agreements, eq(agreements.orgId, organizations.id))
-    .where(lt(agreements.acceptedAt, period.end))
-    .then((rows) => rows.map((r) => r.org));
+    .where(
+      sql`exists (select 1 from ${agreements} a where a.org_id = ${organizations.id} and a.accepted_at < ${end})
+        or exists (select 1 from ${conversions} c where c.org_id = ${organizations.id} and c.attributed
+                   and c.billing_period_id is null and c.occurred_at < ${end})`,
+    );
 }
 
 // ---------------------------------------------------------------------------

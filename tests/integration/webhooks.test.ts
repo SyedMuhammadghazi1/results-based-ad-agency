@@ -152,6 +152,25 @@ describe("Shopify webhooks", () => {
       status: "duplicate",
     });
   });
+
+  it("acknowledges restock-only refunds instead of failing (Shopify drops failing webhooks)", async () => {
+    const { owner, org } = await setup();
+    const integration = await saveShopify(org, owner, {
+      shopDomain: "acme.myshopify.com",
+      webhookSecret: SHOPIFY_SECRET,
+    });
+    await shopify(integration.id, "orders/paid", order(7002));
+    const res = await shopify(integration.id, "refunds/create", {
+      id: 9002,
+      order_id: 7002,
+      created_at: new Date().toISOString(),
+      transactions: [],
+      refund_line_items: [{ total_tax: "0.00" }],
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ status: "ignored", reason: "no_refunded_revenue" });
+    expect(await db.select().from(conversionAdjustments)).toHaveLength(0);
+  });
 });
 
 describe("client Stripe webhooks", () => {

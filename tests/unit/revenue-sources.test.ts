@@ -159,6 +159,18 @@ describe("Shopify webhooks", () => {
     ).toMatchObject({ kind: "ignored" });
     expect(normalizeShopifyWebhook("orders/create", order)).toMatchObject({ kind: "ignored" });
   });
+
+  it("ignores restock-only / pending refunds that carry no successful transaction", () => {
+    // Shopify sends refunds/create with `transactions: []` when items are only restocked.
+    for (const transactions of [
+      [],
+      [{ kind: "refund", status: "pending", amount: "10.00", currency: "USD" }],
+    ]) {
+      expect(
+        normalizeShopifyWebhook("refunds/create", { id: 3, order_id: 4, transactions }),
+      ).toEqual({ kind: "ignored", reason: "no_refunded_revenue" });
+    }
+  });
 });
 
 describe("client Stripe events", () => {

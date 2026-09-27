@@ -184,7 +184,11 @@ export function normalizeShopifyWebhook(topic: string, body: unknown): RevenueEv
     const successful = refund.transactions.filter(
       (t) => t.kind === "refund" && t.status === "success",
     );
-    const currency = normalizeCurrency(successful[0]?.currency ?? "");
+    // Restock-only refunds have no transactions (and pending ones no successful one): no money
+    // was returned. Acknowledge them — a thrown error makes Shopify retry and eventually remove
+    // the webhook subscription.
+    if (successful.length === 0) return { kind: "ignored", reason: "no_refunded_revenue" };
+    const currency = normalizeCurrency(successful[0]!.currency ?? "");
     const paid = successful.reduce((s, t) => s + absMinor(t.amount, currency), 0);
     const tax =
       refund.refund_line_items.reduce(

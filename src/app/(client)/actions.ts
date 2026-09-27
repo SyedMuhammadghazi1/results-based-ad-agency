@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import type { ActionState } from "@/lib/action-state";
 import { actionError, formToObject } from "@/server/actions";
 import { startPaymentMethodSetup } from "@/server/billing";
-import { requireMembership, requireOrgOwner, requireRole } from "@/server/guards";
+import { requireOrgOwner, requireRole } from "@/server/guards";
 import { clientIp } from "@/server/http";
 import { ensureIntegrationRow, saveClientStripe, saveShopify } from "@/server/integrations";
 import {
@@ -148,9 +148,4 @@ export async function inviteMemberAction(_prev: ActionState, fd: FormData): Prom
   } catch (err) {
     return actionError(err, "member.invite");
   }
-}
-
-export async function refreshTrackingStatusAction(): Promise<ActionState> {
-  await requireMembership();
-  return { ok: true };
 }

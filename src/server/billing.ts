@@ -242,7 +242,10 @@ export async function issueStripeInvoice(
         {
           customer: org.stripeCustomerId,
           collection_method: "charge_automatically",
-          auto_advance: true,
+          // Stripe auto-finalizes auto-advancing drafts after ~1 hour. If adding the fee line
+          // below fails, an empty draft would become a $0 "paid" invoice (fee never collected),
+          // so the draft stays manual until finalizeInvoice turns automatic collection on.
+          auto_advance: false,
           currency: row.currency.toLowerCase(),
           description: `${appName} performance fee — ${periodKey}`,
           pending_invoice_items_behavior: "exclude",

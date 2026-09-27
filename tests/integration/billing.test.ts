@@ -23,11 +23,21 @@ import { signStripePayload } from "@/server/stripe";
 import { ingestTouch } from "@/server/tracking";
 import { activeCampaign, createUser, onboardedOrg, SITE, type TestUser } from "./helpers";
 
-/** In-memory fake of the Stripe SDK surface we use, emulating idempotency keys. */
+/**
+ * In-memory fake of the Stripe SDK surface we use, emulating idempotency keys and Stripe's
+ * automatic finalization of drafts created with `auto_advance: true` (`advanceClock()` = ~1 hour
+ * later; a finalized $0 invoice is immediately `paid`).
+ */
 function fakeStripe() {
   const invoices = new Map<
     string,
-    { id: string; status: string; amount_due: number; hosted_invoice_url: string | null }
+    {
+      id: string;
+      status: string;
+      amount_due: number;
+      hosted_invoice_url: string | null;
+      auto_advance: boolean;
+    }
   >();
   const idempotent = new Map<string, unknown>();
   let n = 0;
@@ -37,6 +47,13 @@ function fakeStripe() {
     if (key) idempotent.set(key, v);
     return v;
   };
+  const advanceClock = () => {
+    for (const inv of invoices.values()) {
+      if (inv.status === "draft" && inv.auto_advance) {
+        inv.status = inv.amount_due === 0 ? "paid" : "open";
+      }
+    }
+  };
   const stripe = {
     customers: {
       create: vi.fn(async (_p: unknown, o?: { idempotencyKey?: string }) =>
@@ -45,9 +62,15 @@ function fakeStripe() {
       update: vi.fn(async () => ({})),
     },
     invoices: {
-      create: vi.fn(async (_p: unknown, o?: { idempotencyKey?: string }) =>
+      create: vi.fn(async (p: { auto_advance?: boolean }, o?: { idempotencyKey?: string }) =>
         once(o?.idempotencyKey, () => {
-          const inv = { id: `in_${++n}`, status: "draft", amount_due: 0, hosted_invoice_url: null };
+          const inv = {
+            id: `in_${++n}`,
+            status: "draft",
+            amount_due: 0,
+            hosted_invoice_url: null,
+            auto_advance: p.auto_advance ?? false,
+          };
           invoices.set(inv.id, inv);
           return inv;
         }),
@@ -74,7 +97,7 @@ function fakeStripe() {
     checkout: { sessions: { create: vi.fn(), retrieve: vi.fn() } },
     setupIntents: { retrieve: vi.fn() },
   };
-  return { stripe: stripe as unknown as StripeClient, mock: stripe, invoices };
+  return { stripe: stripe as unknown as StripeClient, mock: stripe, invoices, advanceClock };
 }
 
 let visitorSeq = 0;
@@ -163,10 +186,12 @@ describe("monthly billing", () => {
       currency: "usd",
       customer: "cus_existing",
     });
+    // The draft must not auto-advance before its fee line exists; finalizing turns it on.
     expect(mock.invoices.create.mock.calls[0]![0]).toMatchObject({
       collection_method: "charge_automatically",
-      auto_advance: true,
+      auto_advance: false,
     });
+    expect(mock.invoices.finalizeInvoice.mock.calls[0]![1]).toMatchObject({ auto_advance: true });
     // The September order stays unbilled.
     const sept = await db.select().from(conversions).where(eq(conversions.externalOrderId, "B-3"));
     expect(sept[0]!.billingPeriodId).toBeNull();
@@ -315,6 +340,31 @@ describe("monthly billing", () => {
     [row] = await db.select().from(billingPeriods);
     expect(row).toMatchObject({ status: "open", stripeInvoiceId: "in_1" });
     expect(mock.invoices.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("resumes an invoice whose fee line failed without Stripe finalizing it empty in between", async () => {
+    const { org, code } = await billableClient();
+    await attributedOrder(org, code, "F-1", 100_000, day(AUG, 2));
+    const { stripe, mock, invoices, advanceClock } = fakeStripe();
+    mock.invoiceItems.create.mockRejectedValueOnce(new Error("Stripe API connection error"));
+
+    expect(await runMonthlyBilling({ now: SEP_1, stripe })).toMatchObject({
+      created: 1,
+      invoiced: 0,
+    });
+    let [row] = await db.select().from(billingPeriods);
+    expect(row).toMatchObject({ status: "pending_invoice", stripeInvoiceId: "in_1" });
+    expect(row!.lastPaymentError).toMatch(/connection error/);
+
+    // Hours pass before someone re-runs the job: Stripe must not have auto-finalized the empty
+    // draft (a $0 invoice would be marked paid and the fee never collected).
+    advanceClock();
+    expect(invoices.get("in_1")!.status).toBe("draft");
+
+    expect(await runMonthlyBilling({ now: SEP_1, stripe })).toMatchObject({ exists: 1 });
+    [row] = await db.select().from(billingPeriods);
+    expect(row).toMatchObject({ status: "open", amountDueMinor: 10_000, lastPaymentError: null });
+    expect(invoices.get("in_1")).toMatchObject({ status: "open", amount_due: 10_000 });
   });
 });
 

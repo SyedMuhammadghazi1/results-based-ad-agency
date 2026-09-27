@@ -3,6 +3,7 @@ import {
   attributeConversion,
   classifyTouch,
   planRefund,
+  revenueShareOfGrossRefund,
   windowStartFor,
   type AttributableTouch,
   type CampaignRef,
@@ -289,5 +290,20 @@ describe("planRefund", () => {
     expect(planRefund(10_000, 0, 0)).toMatchObject({ ok: false, reason: "non_positive_refund" });
     expect(planRefund(10_000, 0, -5)).toMatchObject({ ok: false });
     expect(planRefund(10_000, 0, 1.5)).toMatchObject({ ok: false });
+  });
+});
+
+describe("revenueShareOfGrossRefund", () => {
+  // $216 order = $200 revenue + $16 tax; Stripe reports refunds tax-inclusive.
+  it("pro-rates a tax-inclusive refund to the revenue (ex-tax) share, round-half-up", () => {
+    expect(revenueShareOfGrossRefund(5_000, 20_000, 21_600)).toBe(4_630); // 4 629.63
+    expect(revenueShareOfGrossRefund(12_000, 20_000, 21_600)).toBe(11_111); // 11 111.11
+    expect(revenueShareOfGrossRefund(21_600, 20_000, 21_600)).toBe(20_000); // full refund
+  });
+
+  it("is the identity when there is no tax or the gross amount is unknown", () => {
+    expect(revenueShareOfGrossRefund(5_000, 20_000, 20_000)).toBe(5_000);
+    expect(revenueShareOfGrossRefund(5_000, 20_000, undefined)).toBe(5_000);
+    expect(revenueShareOfGrossRefund(5_000, 20_000, 0)).toBe(5_000);
   });
 });

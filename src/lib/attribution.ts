@@ -1,4 +1,5 @@
 import { DAY_MS } from "./dates";
+import { roundHalfUpDiv } from "./money";
 import type { CampaignStatus, Platform } from "@/db/schema";
 
 /**
@@ -171,4 +172,24 @@ export function planRefund(
   if (remaining <= 0) return { ok: false, reason: "already_fully_refunded" };
   const applied = Math.min(refundMinor, remaining);
   return { ok: true, adjustmentMinor: -applied, newRefundedMinor: alreadyRefundedMinor + applied };
+}
+
+/**
+ * Revenue part of a tax-inclusive refund. Stripe reports refunds on the whole charge (tax
+ * included) while conversion revenue excludes tax, so the refund is pro-rated by
+ * revenue ÷ charged amount (round-half-up). Identity when the charge has no tax or its gross
+ * amount is unknown.
+ */
+export function revenueShareOfGrossRefund(
+  refundedGrossMinor: number,
+  conversionRevenueMinor: number,
+  chargedGrossMinor: number | null | undefined,
+): number {
+  if (!chargedGrossMinor || chargedGrossMinor <= conversionRevenueMinor) return refundedGrossMinor;
+  return Number(
+    roundHalfUpDiv(
+      BigInt(refundedGrossMinor) * BigInt(conversionRevenueMinor),
+      BigInt(chargedGrossMinor),
+    ),
+  );
 }

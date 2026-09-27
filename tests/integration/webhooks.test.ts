@@ -213,6 +213,7 @@ describe("client Stripe webhooks", () => {
     data: {
       object: {
         id: `ch_${id}`,
+        amount: 21_600,
         amount_refunded: cumulative,
         currency: "usd",
         payment_intent: `pi_${id}`,
@@ -230,25 +231,35 @@ describe("client Stripe webhooks", () => {
       status: "duplicate_delivery",
     });
 
+    // Stripe refunds are tax-inclusive (the $216 charge = $200 revenue + $16 tax); revenue is
+    // measured excluding tax, so a $50 refund removes 50 × 200/216 = $46.30 of revenue.
     expect(
       await (await stripeEvent(integration.id, refunded("1", 5_000, "evt_r1"))).json(),
     ).toMatchObject({
       status: "recorded",
-      amountMinor: -5_000,
+      amountMinor: -4_630,
     });
-    // Second partial refund: Stripe reports the cumulative total (12,000) → delta 7,000.
+    // Second partial refund: Stripe reports the cumulative total ($120 → $111.11 revenue).
     expect(
       await (await stripeEvent(integration.id, refunded("1", 12_000, "evt_r2"))).json(),
     ).toMatchObject({
-      amountMinor: -7_000,
+      amountMinor: -6_481,
     });
-    const [conv] = await db.select().from(conversions);
+    let [conv] = await db.select().from(conversions);
     expect(conv).toMatchObject({
       source: "stripe",
       externalOrderId: "pi_1",
       amountMinor: 20_000,
-      refundedMinor: 12_000,
+      refundedMinor: 11_111,
     });
+    // Refunding the rest removes exactly the remaining revenue.
+    expect(
+      await (await stripeEvent(integration.id, refunded("1", 21_600, "evt_r3"))).json(),
+    ).toMatchObject({
+      amountMinor: -8_889,
+    });
+    [conv] = await db.select().from(conversions);
+    expect(conv!.refundedMinor).toBe(20_000);
   });
 
   it("rejects events signed with another secret", async () => {

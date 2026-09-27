@@ -248,6 +248,7 @@ describe("client Stripe events", () => {
   it("charge.refunded → cumulative refund keyed by charge + amount", () => {
     const charge = {
       id: "ch_1",
+      amount: 11_000,
       amount_refunded: 2_500,
       currency: "usd",
       payment_intent: "pi_123",
@@ -258,6 +259,7 @@ describe("client Stripe events", () => {
       externalRefundId: "ch_1:2500",
       occurredAt: new Date(1_787_000_000 * 1000),
       cumulativeRefundedMinor: 2_500,
+      chargedGrossMinor: 11_000,
       currency: "USD",
     });
   });

@@ -31,7 +31,10 @@ export type NormalizedCumulativeRefund = {
   externalOrderId: string;
   externalRefundId: string;
   occurredAt: Date;
+  /** Tax-inclusive, like the charged amount below. */
   cumulativeRefundedMinor: number;
+  /** Gross amount of the charge (tax included), to pro-rate refunds to ex-tax revenue. */
+  chargedGrossMinor?: number;
   currency: string;
 };
 
@@ -231,6 +234,7 @@ const stripeSessionSchema = z.object({
 
 const stripeChargeSchema = z.object({
   id: z.string(),
+  amount: z.number().int().optional(),
   amount_refunded: z.number().int(),
   currency: z.string(),
   payment_intent: z.union([z.string(), z.object({ id: z.string() })]).nullish(),
@@ -282,6 +286,7 @@ export function normalizeClientStripeEvent(event: StripeLikeEvent): RevenueEvent
       externalRefundId: `${c.id}:${c.amount_refunded}`,
       occurredAt,
       cumulativeRefundedMinor: c.amount_refunded,
+      ...(c.amount !== undefined ? { chargedGrossMinor: c.amount } : {}),
       currency: normalizeCurrency(c.currency),
     };
   }

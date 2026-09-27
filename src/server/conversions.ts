@@ -11,6 +11,7 @@ import {
 import {
   attributeConversion,
   planRefund,
+  revenueShareOfGrossRefund,
   windowStartFor,
   type AttributionResult,
 } from "@/lib/attribution";
@@ -222,8 +223,15 @@ export async function recordRefund(
       .limit(1);
     if (dup.length > 0) return { status: "duplicate" } as const;
 
+    // Stripe's cumulative refund includes tax; revenue (and refundedMinor) exclude it.
     const requested =
-      ev.kind === "refund" ? ev.amountMinor : ev.cumulativeRefundedMinor - conv.refundedMinor;
+      ev.kind === "refund"
+        ? ev.amountMinor
+        : revenueShareOfGrossRefund(
+            ev.cumulativeRefundedMinor,
+            conv.amountMinor,
+            ev.chargedGrossMinor,
+          ) - conv.refundedMinor;
     if (ev.kind === "refund_cumulative" && requested <= 0) {
       return { status: "ignored", reason: "no_new_refund" } as const;
     }

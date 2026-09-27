@@ -87,7 +87,8 @@ Money is `bigint` minor units + ISO currency everywhere. Rates are basis points.
 5. The agreement **in force at the order time** supplies the window and the fee rate, which is
    snapshotted on the conversion. Orders placed before any agreement are never attributed.
 6. Refunds become negative `conversion_adjustments`, capped so a conversion's refunds never exceed
-   its amount. Stripe reports cumulative refunds; the service converts them to deltas.
+   its amount. Stripe reports cumulative, tax-inclusive refunds; the service pro-rates them to the
+   ex-tax revenue share (revenue ÷ charged amount) and converts them to deltas.
 
 ## Billing
 

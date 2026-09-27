@@ -91,6 +91,10 @@ async function reset() {
 }
 
 async function main() {
+  // Demo users have well-known passwords; never create them in production by accident.
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_PRODUCTION_SEED !== "1") {
+    throw new Error("Refusing to seed demo data with NODE_ENV=production.");
+  }
   if (process.argv.includes("--reset")) await reset();
   const existing = await db.select().from(user).where(eq(user.email, DEMO.admin.email)).limit(1);
   if (existing.length > 0) {

@@ -18,7 +18,9 @@ export function revenueTrend(currentMinor: number, previousMinor: number): Trend
 
 export function describeTrend(t: Trend): string {
   if (t.pctChange === null) {
-    return t.currentMinor > 0 ? "new this week (no attributed revenue the week before)" : "no change";
+    return t.currentMinor > 0
+      ? "new this week (no attributed revenue the week before)"
+      : "no change";
   }
   if (t.direction === "flat") return "flat vs the previous 7 days";
   return `${t.direction === "up" ? "up" : "down"} ${Math.abs(t.pctChange)}% vs the previous 7 days`;

@@ -38,10 +38,7 @@ export type NormalizedCumulativeRefund = {
 export type Ignored = { kind: "ignored"; reason: string };
 
 export type RevenueEvent =
-  | NormalizedConversion
-  | NormalizedRefund
-  | NormalizedCumulativeRefund
-  | Ignored;
+  NormalizedConversion | NormalizedRefund | NormalizedCumulativeRefund | Ignored;
 
 const VISITOR_ID = /^[A-Za-z0-9_-]{16,64}$/;
 
@@ -190,8 +187,14 @@ export function normalizeShopifyWebhook(topic: string, body: unknown): RevenueEv
     const currency = normalizeCurrency(successful[0]?.currency ?? "");
     const paid = successful.reduce((s, t) => s + absMinor(t.amount, currency), 0);
     const tax =
-      refund.refund_line_items.reduce((s, li) => s + (li.total_tax ? absMinor(li.total_tax, currency) : 0), 0) +
-      refund.order_adjustments.reduce((s, a) => s + (a.tax_amount ? absMinor(a.tax_amount, currency) : 0), 0);
+      refund.refund_line_items.reduce(
+        (s, li) => s + (li.total_tax ? absMinor(li.total_tax, currency) : 0),
+        0,
+      ) +
+      refund.order_adjustments.reduce(
+        (s, a) => s + (a.tax_amount ? absMinor(a.tax_amount, currency) : 0),
+        0,
+      );
     const amountMinor = paid - Math.min(tax, paid);
     if (amountMinor <= 0) return { kind: "ignored", reason: "no_refunded_revenue" };
     return {

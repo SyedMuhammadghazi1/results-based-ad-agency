@@ -9,7 +9,12 @@ import {
 } from "@/lib/billing";
 import { applyRateBps } from "@/lib/money";
 
-const conv = (id: string, amountMinor: number, feeRateBps = 1000, currency = "USD"): StatementConversion => ({
+const conv = (
+  id: string,
+  amountMinor: number,
+  feeRateBps = 1000,
+  currency = "USD",
+): StatementConversion => ({
   id,
   amountMinor,
   currency,
@@ -23,7 +28,14 @@ const refund = (
   conversionBilledEarlier: boolean,
   feeRateBps = 1000,
   currency = "USD",
-): StatementAdjustment => ({ id, conversionId, amountMinor, currency, feeRateBps, conversionBilledEarlier });
+): StatementAdjustment => ({
+  id,
+  conversionId,
+  amountMinor,
+  currency,
+  feeRateBps,
+  conversionBilledEarlier,
+});
 
 const statement = (
   conversions: StatementConversion[],
@@ -107,7 +119,10 @@ describe("computeStatement", () => {
 
   it("rejects same-period refunds larger than the order", () => {
     expect(() =>
-      statement([conv("a", 1_000)], [refund("r1", "a", -600, false), refund("r2", "a", -600, false)]),
+      statement(
+        [conv("a", 1_000)],
+        [refund("r1", "a", -600, false), refund("r2", "a", -600, false)],
+      ),
     ).toThrow(BillingInputError);
   });
 
@@ -135,15 +150,30 @@ describe("computeStatement", () => {
   it("applies carried-in credit across periods until it is used up", () => {
     // Month 1: refund credit 7,000 carried out (see above). Month 2: fee 3,000 → 0 due, 4,000 left.
     const m2 = statement([conv("m2", 30_000)], [], 7_000);
-    expect(m2).toMatchObject({ grossFeeMinor: 3_000, creditAppliedMinor: 3_000, amountDueMinor: 0, creditCarriedOutMinor: 4_000 });
+    expect(m2).toMatchObject({
+      grossFeeMinor: 3_000,
+      creditAppliedMinor: 3_000,
+      amountDueMinor: 0,
+      creditCarriedOutMinor: 4_000,
+    });
     // Month 3: fee 10,000 → 4,000 credit applied, 6,000 due, nothing carried.
     const m3 = statement([conv("m3", 100_000)], [], m2.creditCarriedOutMinor);
-    expect(m3).toMatchObject({ grossFeeMinor: 10_000, creditAppliedMinor: 4_000, amountDueMinor: 6_000, creditCarriedOutMinor: 0 });
+    expect(m3).toMatchObject({
+      grossFeeMinor: 10_000,
+      creditAppliedMinor: 4_000,
+      amountDueMinor: 6_000,
+      creditCarriedOutMinor: 0,
+    });
   });
 
   it("a month with only credits and no revenue carries the credit forward", () => {
     const s = statement([], [refund("r", "old", -25_000, true)], 500);
-    expect(s).toMatchObject({ grossFeeMinor: 0, creditGeneratedMinor: 2_500, amountDueMinor: 0, creditCarriedOutMinor: 3_000 });
+    expect(s).toMatchObject({
+      grossFeeMinor: 0,
+      creditGeneratedMinor: 2_500,
+      amountDueMinor: 0,
+      creditCarriedOutMinor: 3_000,
+    });
   });
 
   it("credits use the fee rate of the refunded conversion", () => {
@@ -165,22 +195,26 @@ describe("computeStatement", () => {
   });
 
   it("rejects refunds in another currency", () => {
-    expect(() => statement([conv("a", 1_000)], [refund("r", "a", -100, false, 1000, "GBP")])).toThrow(
-      CurrencyMismatchError,
-    );
+    expect(() =>
+      statement([conv("a", 1_000)], [refund("r", "a", -100, false, 1000, "GBP")]),
+    ).toThrow(CurrencyMismatchError);
   });
 
   it("rejects malformed inputs", () => {
     expect(() => statement([conv("a", 0)])).toThrow(BillingInputError);
     expect(() => statement([conv("a", 100), conv("a", 100)])).toThrow(/duplicate/);
     expect(() => statement([conv("a", 100)], [refund("r", "a", 50, false)])).toThrow(/negative/);
-    expect(() => statement([], [refund("r", "missing", -50, false)])).toThrow(/neither on this statement/);
+    expect(() => statement([], [refund("r", "missing", -50, false)])).toThrow(
+      /neither on this statement/,
+    );
     expect(() => statement([], [], -1)).toThrow(BillingInputError);
   });
 
   it("describes the invoice line", () => {
     const s = statement([conv("new", 200_000)], [refund("r-old", "old", -50_000, true)]);
     const text = describeStatement(s, "2026-08", (n) => `$${(n / 100).toFixed(2)}`);
-    expect(text).toBe("Performance fee 2026-08: 10% of $2000.00 attributed revenue, less $50.00 refund credit");
+    expect(text).toBe(
+      "Performance fee 2026-08: 10% of $2000.00 attributed revenue, less $50.00 refund credit",
+    );
   });
 });

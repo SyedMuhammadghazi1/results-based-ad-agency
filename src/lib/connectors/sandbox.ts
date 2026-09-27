@@ -44,14 +44,20 @@ export class SandboxConnector implements AdConnector {
     return { manual: false };
   }
 
-  async fetchDailySpend(ref: ExternalCampaignRef, since: string, until: string): Promise<DailySpend[]> {
+  async fetchDailySpend(
+    ref: ExternalCampaignRef,
+    since: string,
+    until: string,
+  ): Promise<DailySpend[]> {
     this.calls.push({ op: "fetchDailySpend", externalId: ref.externalId, since, until });
-    return dateRange(new Date(`${since}T00:00:00Z`), new Date(`${until}T00:00:00Z`)).map((date) => ({
-      date,
-      spendMinor: Math.round(
-        ref.dailyBudgetMinor * (0.55 + 0.45 * seededFraction(`${ref.externalId}:${date}`)),
-      ),
-    }));
+    return dateRange(new Date(`${since}T00:00:00Z`), new Date(`${until}T00:00:00Z`)).map(
+      (date) => ({
+        date,
+        spendMinor: Math.round(
+          ref.dailyBudgetMinor * (0.55 + 0.45 * seededFraction(`${ref.externalId}:${date}`)),
+        ),
+      }),
+    );
   }
 }
 

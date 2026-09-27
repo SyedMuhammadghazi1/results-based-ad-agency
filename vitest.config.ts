@@ -9,8 +9,8 @@ import { defineConfig } from "vitest/config";
 const TEST_DATABASE_URL =
   process.env.TEST_DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/ad_agency_test";
 
-const testEnv = {
-  NODE_ENV: "test",
+const testEnv: Partial<NodeJS.ProcessEnv> = {
+  NODE_ENV: "test" as const,
   DATABASE_URL: TEST_DATABASE_URL,
   TEST_DATABASE_URL,
   APP_URL: "http://localhost:3003",

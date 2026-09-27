@@ -113,7 +113,10 @@ export const organizations = pgTable(
     /** Public tracking key embedded in t.js (`oa_pk_…`). Not a secret. */
     publicKey: text("public_key").notNull().unique(),
     /** Exact origins (scheme://host[:port]) allowed to post touches. */
-    allowedOrigins: text("allowed_origins").array().notNull().default(sql`'{}'::text[]`),
+    allowedOrigins: text("allowed_origins")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     /** SHA-256 of the server-to-server API key. The key itself is shown once. */
     apiKeyHash: text("api_key_hash"),
     apiKeyPrefix: text("api_key_prefix"),
@@ -190,7 +193,10 @@ export const orgIntakes = pgTable(
     grossMarginBps: integer("gross_margin_bps").notNull(),
     targetGeos: text("target_geos").array().notNull(),
     monthlySpendCapMinor: money("monthly_spend_cap_minor").notNull(),
-    creativeAssetLinks: text("creative_asset_links").array().notNull().default(sql`'{}'::text[]`),
+    creativeAssetLinks: text("creative_asset_links")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     submittedByUserId: text("submitted_by_user_id").references(() => user.id, {
       onDelete: "set null",
     }),
@@ -275,7 +281,11 @@ export type ConnectorKind = (typeof CONNECTOR_KINDS)[number];
 export const PAUSE_REASONS = ["manual", "budget_cap", "dunning"] as const;
 export type PauseReason = (typeof PAUSE_REASONS)[number];
 
-export type Creative = { name: string; url: string; format: "image" | "video" | "carousel" | "text" };
+export type Creative = {
+  name: string;
+  url: string;
+  format: "image" | "video" | "carousel" | "text";
+};
 
 export const campaigns = pgTable(
   "campaigns",
@@ -486,7 +496,10 @@ export const billingPeriods = pgTable(
   },
   (t) => [
     uniqueIndex("billing_periods_org_period_unique").on(t.orgId, t.periodStart),
-    check("billing_amounts_non_negative", sql`${t.amountDueMinor} >= 0 and ${t.grossFeeMinor} >= 0`),
+    check(
+      "billing_amounts_non_negative",
+      sql`${t.amountDueMinor} >= 0 and ${t.grossFeeMinor} >= 0`,
+    ),
   ],
 );
 
@@ -521,7 +534,11 @@ export const alerts = pgTable(
       onDelete: "set null",
     }),
   },
-  (t) => [index("alerts_open_idx").on(t.createdAt).where(sql`${t.resolvedAt} is null`)],
+  (t) => [
+    index("alerts_open_idx")
+      .on(t.createdAt)
+      .where(sql`${t.resolvedAt} is null`),
+  ],
 );
 
 export const auditLog = pgTable(
@@ -601,7 +618,10 @@ export const applications = pgTable("applications", {
   monthlyRevenueBand: text("monthly_revenue_band").notNull(),
   monthlyAdSpendBand: text("monthly_ad_spend_band").notNull(),
   message: text("message").notNull().default(""),
-  status: text("status").$type<"new" | "contacted" | "accepted" | "declined">().notNull().default("new"),
+  status: text("status")
+    .$type<"new" | "contacted" | "accepted" | "declined">()
+    .notNull()
+    .default("new"),
   createdAt: ts("created_at").notNull().defaultNow(),
 });
 

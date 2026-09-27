@@ -29,12 +29,19 @@ export class DecryptionError extends Error {
   }
 }
 
-export function buildKeyring(currentKeyId: string, currentKeyB64: string, previous?: string): Keyring {
+export function buildKeyring(
+  currentKeyId: string,
+  currentKeyB64: string,
+  previous?: string,
+): Keyring {
   const keys = new Map<string, Buffer>();
   const current = Buffer.from(currentKeyB64, "base64");
   if (current.length !== 32) throw new Error("DATA_ENCRYPTION_KEY must decode to 32 bytes");
   keys.set(currentKeyId, current);
-  for (const pair of (previous ?? "").split(",").map((p) => p.trim()).filter(Boolean)) {
+  for (const pair of (previous ?? "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean)) {
     const idx = pair.indexOf(":");
     if (idx <= 0) throw new Error("DATA_ENCRYPTION_PREVIOUS_KEYS entries must be keyId:base64Key");
     const id = pair.slice(0, idx);

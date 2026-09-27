@@ -77,7 +77,8 @@ export function classifyTouch(touch: TouchParams, orgCampaigns: CampaignRef[]): 
   }
 
   if (present(touch.fbclid)) return { paid: false, reason: "fbclid_only" };
-  if (present(touch.utmSource) || present(touch.utmMedium)) return { paid: false, reason: "utm_only" };
+  if (present(touch.utmSource) || present(touch.utmMedium))
+    return { paid: false, reason: "utm_only" };
   return { paid: false, reason: "no_identifiers" };
 }
 

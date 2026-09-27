@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { dateRange, daysInPeriod, isoWeekKey, parsePeriodKey, periodContaining, previousPeriod } from "@/lib/dates";
+import {
+  dateRange,
+  daysInPeriod,
+  isoWeekKey,
+  parsePeriodKey,
+  periodContaining,
+  previousPeriod,
+} from "@/lib/dates";
 
 describe("UTC billing periods", () => {
   it("bills the previous calendar month", () => {

@@ -92,7 +92,8 @@ export function trackingUrlTemplate(
       return {
         finalUrl: landingUrl,
         template: `{lpurl}?${utm("google", "cpc", "&utm_campaign={campaignid}&utm_content={creative}&utm_term={keyword}")}`,
-        notes: "Paste into Campaign settings → Campaign URL options → Tracking template. Keep auto-tagging (gclid) on.",
+        notes:
+          "Paste into Campaign settings → Campaign URL options → Tracking template. Keep auto-tagging (gclid) on.",
       };
     case "meta":
       return {

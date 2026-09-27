@@ -81,7 +81,11 @@ export class GoogleAdsConnector implements AdConnector {
     try {
       json = await res.json();
     } catch {
-      throw new ConnectorError(`Google Ads API returned non-JSON (HTTP ${res.status})`, "google", res.status);
+      throw new ConnectorError(
+        `Google Ads API returned non-JSON (HTTP ${res.status})`,
+        "google",
+        res.status,
+      );
     }
     const err = Array.isArray(json)
       ? (json[0] as GoogleError | undefined)?.error
@@ -192,7 +196,11 @@ export class GoogleAdsConnector implements AdConnector {
     return batches.flatMap((b) => ((b as { results?: unknown[] }).results ?? []) as unknown[]);
   }
 
-  async fetchDailySpend(ref: ExternalCampaignRef, since: string, until: string): Promise<DailySpend[]> {
+  async fetchDailySpend(
+    ref: ExternalCampaignRef,
+    since: string,
+    until: string,
+  ): Promise<DailySpend[]> {
     const rows = await this.search(this.spendQuery(ref.externalId, since, until));
     const byDate = new Map<string, number>();
     for (const row of rows as Array<{
@@ -275,7 +283,10 @@ export async function exchangeGoogleCode(p: {
     p.fetch ?? ((i, init) => globalThis.fetch(i, init)),
   );
   if (!json.refresh_token) {
-    throw new ConnectorError("Google did not return a refresh token (re-consent required)", "google");
+    throw new ConnectorError(
+      "Google did not return a refresh token (re-consent required)",
+      "google",
+    );
   }
   return { refreshToken: json.refresh_token };
 }
@@ -295,6 +306,7 @@ export async function refreshGoogleAccessToken(p: {
     },
     p.fetch ?? ((i, init) => globalThis.fetch(i, init)),
   );
-  if (!json.access_token) throw new ConnectorError("Google did not return an access token", "google");
+  if (!json.access_token)
+    throw new ConnectorError("Google did not return an access token", "google");
   return json.access_token;
 }

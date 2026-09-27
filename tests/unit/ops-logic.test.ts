@@ -33,7 +33,9 @@ describe("budget guard logic", () => {
       dunning: false,
     };
     expect(shouldResumeCapPause(base)).toBe(true);
-    expect(shouldResumeCapPause({ ...base, pausedAt: new Date("2026-09-01T00:30:00Z") })).toBe(false);
+    expect(shouldResumeCapPause({ ...base, pausedAt: new Date("2026-09-01T00:30:00Z") })).toBe(
+      false,
+    );
     expect(shouldResumeCapPause({ ...base, mtdSpendMinor: 100_000 })).toBe(false);
     expect(shouldResumeCapPause({ ...base, dunning: true })).toBe(false);
   });
@@ -47,17 +49,29 @@ describe("budget guard logic", () => {
 describe("dunning", () => {
   const now = new Date("2026-09-20T00:00:00Z");
   it("flags open or failed invoices older than the grace period", () => {
-    expect(isOverdue({ status: "open", issuedAt: new Date("2026-09-01T00:00:00Z") }, now, 14)).toBe(true);
-    expect(isOverdue({ status: "payment_failed", issuedAt: new Date("2026-09-01T00:00:00Z") }, now, 14)).toBe(true);
-    expect(isOverdue({ status: "open", issuedAt: new Date("2026-09-06T00:00:00Z") }, now, 14)).toBe(false);
-    expect(isOverdue({ status: "paid", issuedAt: new Date("2026-08-01T00:00:00Z") }, now, 14)).toBe(false);
+    expect(isOverdue({ status: "open", issuedAt: new Date("2026-09-01T00:00:00Z") }, now, 14)).toBe(
+      true,
+    );
+    expect(
+      isOverdue({ status: "payment_failed", issuedAt: new Date("2026-09-01T00:00:00Z") }, now, 14),
+    ).toBe(true);
+    expect(isOverdue({ status: "open", issuedAt: new Date("2026-09-06T00:00:00Z") }, now, 14)).toBe(
+      false,
+    );
+    expect(isOverdue({ status: "paid", issuedAt: new Date("2026-08-01T00:00:00Z") }, now, 14)).toBe(
+      false,
+    );
     expect(isOverdue({ status: "open", issuedAt: null }, now, 14)).toBe(false);
   });
 });
 
 describe("weekly report trend", () => {
   it("computes week-over-week change", () => {
-    expect(revenueTrend(12_000, 10_000)).toMatchObject({ deltaMinor: 2_000, pctChange: 20, direction: "up" });
+    expect(revenueTrend(12_000, 10_000)).toMatchObject({
+      deltaMinor: 2_000,
+      pctChange: 20,
+      direction: "up",
+    });
     expect(revenueTrend(5_000, 10_000)).toMatchObject({ pctChange: -50, direction: "down" });
     expect(revenueTrend(10_000, 10_000)).toMatchObject({ pctChange: 0, direction: "flat" });
     expect(revenueTrend(1, 3)).toMatchObject({ pctChange: -66.7 });
@@ -71,7 +85,9 @@ describe("weekly report trend", () => {
   });
 
   it("fills missing days with zero", () => {
-    expect(fillDailySeries([{ date: "2026-09-02", amountMinor: 5 }], ["2026-09-01", "2026-09-02"])).toEqual([
+    expect(
+      fillDailySeries([{ date: "2026-09-02", amountMinor: 5 }], ["2026-09-01", "2026-09-02"]),
+    ).toEqual([
       { date: "2026-09-01", amountMinor: 0 },
       { date: "2026-09-02", amountMinor: 5 },
     ]);
@@ -79,7 +95,14 @@ describe("weekly report trend", () => {
 });
 
 describe("onboarding", () => {
-  const none = { hasOrg: false, hasIntake: false, hasAgreement: false, trackingSeen: false, revenueSourceConnected: false, paymentMethodReady: false };
+  const none = {
+    hasOrg: false,
+    hasIntake: false,
+    hasAgreement: false,
+    trackingSeen: false,
+    revenueSourceConnected: false,
+    paymentMethodReady: false,
+  };
   it("walks the steps in order", () => {
     expect(onboardingProgress(none).next?.id).toBe("organization");
     expect(onboardingProgress({ ...none, hasOrg: true }).next?.id).toBe("intake");
@@ -88,8 +111,18 @@ describe("onboarding", () => {
     expect(p.next?.id).toBe("tracking");
     expect(p.dashboardUnlocked).toBe(true);
     expect(p.readyToLaunch).toBe(false);
-    expect(onboardingProgress({ ...afterAgreement, trackingSeen: true, revenueSourceConnected: true }).next?.id).toBe("payment");
-    const all = onboardingProgress({ hasOrg: true, hasIntake: true, hasAgreement: true, trackingSeen: true, revenueSourceConnected: true, paymentMethodReady: true });
+    expect(
+      onboardingProgress({ ...afterAgreement, trackingSeen: true, revenueSourceConnected: true })
+        .next?.id,
+    ).toBe("payment");
+    const all = onboardingProgress({
+      hasOrg: true,
+      hasIntake: true,
+      hasAgreement: true,
+      trackingSeen: true,
+      revenueSourceConnected: true,
+      paymentMethodReady: true,
+    });
     expect(all.complete && all.readyToLaunch).toBe(true);
   });
 
@@ -101,7 +134,14 @@ describe("onboarding", () => {
 });
 
 describe("agreement rendering", () => {
-  const terms = { appName: "Outcome Ads", orgName: "Acme", feeRateBps: 1000, attributionWindowDays: 7, currency: "USD", dunningGraceDays: 14 };
+  const terms = {
+    appName: "Outcome Ads",
+    orgName: "Acme",
+    feeRateBps: 1000,
+    attributionWindowDays: 7,
+    currency: "USD",
+    dunningGraceDays: 14,
+  };
   it("renders the commercial terms and a stable hash", () => {
     const text = renderAgreement(terms);
     expect(text).toContain(`version ${AGREEMENT_VERSION}`);
@@ -109,6 +149,8 @@ describe("agreement rendering", () => {
     expect(text).toContain("within 7 days before the order");
     expect(text).toContain("no retainer");
     expect(hashAgreement(text)).toBe(hashAgreement(renderAgreement(terms)));
-    expect(hashAgreement(text)).not.toBe(hashAgreement(renderAgreement({ ...terms, feeRateBps: 1200 })));
+    expect(hashAgreement(text)).not.toBe(
+      hashAgreement(renderAgreement({ ...terms, feeRateBps: 1200 })),
+    );
   });
 });

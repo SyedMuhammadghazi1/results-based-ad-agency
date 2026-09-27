@@ -85,7 +85,11 @@ export class MetaMarketingConnector implements AdConnector {
     try {
       json = await res.json();
     } catch {
-      throw new ConnectorError(`Meta API returned non-JSON (HTTP ${res.status})`, "meta", res.status);
+      throw new ConnectorError(
+        `Meta API returned non-JSON (HTTP ${res.status})`,
+        "meta",
+        res.status,
+      );
     }
     const err = (json as GraphError).error;
     if (!res.ok || err) {
@@ -136,7 +140,11 @@ export class MetaMarketingConnector implements AdConnector {
     return `${this.base}/${encodeURIComponent(ref.externalId)}/insights?${params.toString()}`;
   }
 
-  async fetchDailySpend(ref: ExternalCampaignRef, since: string, until: string): Promise<DailySpend[]> {
+  async fetchDailySpend(
+    ref: ExternalCampaignRef,
+    since: string,
+    until: string,
+  ): Promise<DailySpend[]> {
     const out: DailySpend[] = [];
     let url: string | undefined = this.insightsUrl(ref, since, until);
     for (let page = 0; url && page < 50; page++) {
@@ -214,7 +222,10 @@ export async function exchangeMetaCode(p: {
       fb_exchange_token: shortJson.access_token,
     }).toString()}`,
   );
-  const longJson = (await long.json()) as { access_token?: string; expires_in?: number } & GraphError;
+  const longJson = (await long.json()) as {
+    access_token?: string;
+    expires_in?: number;
+  } & GraphError;
   if (!long.ok || !longJson.access_token) {
     throw new ConnectorError(
       `Meta long-lived token exchange failed: ${longJson.error?.message ?? long.status}`,

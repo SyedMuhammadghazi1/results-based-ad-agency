@@ -37,16 +37,58 @@ describe("server-to-server events", () => {
       currency: "USD",
       occurred_at: "2026-08-21T10:00:00+02:00",
     });
-    expect(normalizeS2sEvent(e)).toMatchObject({ kind: "refund", amountMinor: 2_050, externalRefundId: "r-1" });
+    expect(normalizeS2sEvent(e)).toMatchObject({
+      kind: "refund",
+      amountMinor: 2_050,
+      externalRefundId: "r-1",
+    });
   });
 
   it("requires an amount and rejects bad payloads", () => {
-    const e = s2sEventSchema.parse({ type: "conversion", order_id: "1", currency: "USD", occurred_at: "2026-08-20T10:00:00Z" });
+    const e = s2sEventSchema.parse({
+      type: "conversion",
+      order_id: "1",
+      currency: "USD",
+      occurred_at: "2026-08-20T10:00:00Z",
+    });
     expect(() => normalizeS2sEvent(e)).toThrow();
-    expect(s2sEventSchema.safeParse({ type: "conversion", order_id: "", amount_minor: 1, currency: "USD", occurred_at: "2026-08-20T10:00:00Z" }).success).toBe(false);
-    expect(s2sEventSchema.safeParse({ type: "conversion", order_id: "1", amount_minor: -5, currency: "USD", occurred_at: "2026-08-20T10:00:00Z" }).success).toBe(false);
-    expect(s2sEventSchema.safeParse({ type: "conversion", order_id: "1", amount_minor: 5, currency: "USD", occurred_at: "yesterday" }).success).toBe(false);
-    expect(s2sEventSchema.safeParse({ type: "conversion", order_id: "1", amount_minor: 5, currency: "USD", occurred_at: "2026-08-20T10:00:00Z", visitor_id: "<script>" }).success).toBe(false);
+    expect(
+      s2sEventSchema.safeParse({
+        type: "conversion",
+        order_id: "",
+        amount_minor: 1,
+        currency: "USD",
+        occurred_at: "2026-08-20T10:00:00Z",
+      }).success,
+    ).toBe(false);
+    expect(
+      s2sEventSchema.safeParse({
+        type: "conversion",
+        order_id: "1",
+        amount_minor: -5,
+        currency: "USD",
+        occurred_at: "2026-08-20T10:00:00Z",
+      }).success,
+    ).toBe(false);
+    expect(
+      s2sEventSchema.safeParse({
+        type: "conversion",
+        order_id: "1",
+        amount_minor: 5,
+        currency: "USD",
+        occurred_at: "yesterday",
+      }).success,
+    ).toBe(false);
+    expect(
+      s2sEventSchema.safeParse({
+        type: "conversion",
+        order_id: "1",
+        amount_minor: 5,
+        currency: "USD",
+        occurred_at: "2026-08-20T10:00:00Z",
+        visitor_id: "<script>",
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -72,8 +114,16 @@ describe("Shopify webhooks", () => {
   });
 
   it("ignores test orders and drops invalid visitor ids", () => {
-    expect(normalizeShopifyWebhook("orders/paid", { ...order, test: true })).toEqual({ kind: "ignored", reason: "test_order" });
-    expect(normalizeShopifyWebhook("orders/paid", { ...order, note_attributes: [{ name: "oa_vid", value: "x" }] })).toMatchObject({
+    expect(normalizeShopifyWebhook("orders/paid", { ...order, test: true })).toEqual({
+      kind: "ignored",
+      reason: "test_order",
+    });
+    expect(
+      normalizeShopifyWebhook("orders/paid", {
+        ...order,
+        note_attributes: [{ name: "oa_vid", value: "x" }],
+      }),
+    ).toMatchObject({
       visitorId: null,
     });
   });
@@ -101,7 +151,11 @@ describe("Shopify webhooks", () => {
 
   it("ignores refunds with no money returned and unknown topics", () => {
     expect(
-      normalizeShopifyWebhook("refunds/create", { id: 1, order_id: 2, transactions: [{ kind: "refund", status: "success", amount: "0.00", currency: "USD" }] }),
+      normalizeShopifyWebhook("refunds/create", {
+        id: 1,
+        order_id: 2,
+        transactions: [{ kind: "refund", status: "success", amount: "0.00", currency: "USD" }],
+      }),
     ).toMatchObject({ kind: "ignored" });
     expect(normalizeShopifyWebhook("orders/create", order)).toMatchObject({ kind: "ignored" });
   });
@@ -118,7 +172,12 @@ describe("client Stripe events", () => {
     metadata: { oa_vid: VID },
     total_details: { amount_tax: 1_000 },
   };
-  const event = (type: string, object: unknown) => ({ id: "evt_1", type, created: 1_787_000_000, data: { object } });
+  const event = (type: string, object: unknown) => ({
+    id: "evt_1",
+    type,
+    created: 1_787_000_000,
+    data: { object },
+  });
 
   it("checkout.session.completed → conversion keyed by payment intent", () => {
     expect(normalizeClientStripeEvent(event("checkout.session.completed", session))).toEqual({
@@ -133,18 +192,36 @@ describe("client Stripe events", () => {
 
   it("falls back to client_reference_id for the visitor and to the session id for the order", () => {
     const res = normalizeClientStripeEvent(
-      event("checkout.session.completed", { ...session, payment_intent: null, metadata: {}, client_reference_id: VID }),
+      event("checkout.session.completed", {
+        ...session,
+        payment_intent: null,
+        metadata: {},
+        client_reference_id: VID,
+      }),
     );
     expect(res).toMatchObject({ externalOrderId: "cs_test_1", visitorId: VID });
   });
 
   it("ignores unpaid and setup sessions", () => {
-    expect(normalizeClientStripeEvent(event("checkout.session.completed", { ...session, payment_status: "unpaid" }))).toMatchObject({ kind: "ignored" });
-    expect(normalizeClientStripeEvent(event("checkout.session.completed", { ...session, mode: "setup" }))).toMatchObject({ kind: "ignored" });
+    expect(
+      normalizeClientStripeEvent(
+        event("checkout.session.completed", { ...session, payment_status: "unpaid" }),
+      ),
+    ).toMatchObject({ kind: "ignored" });
+    expect(
+      normalizeClientStripeEvent(
+        event("checkout.session.completed", { ...session, mode: "setup" }),
+      ),
+    ).toMatchObject({ kind: "ignored" });
   });
 
   it("charge.refunded → cumulative refund keyed by charge + amount", () => {
-    const charge = { id: "ch_1", amount_refunded: 2_500, currency: "usd", payment_intent: "pi_123" };
+    const charge = {
+      id: "ch_1",
+      amount_refunded: 2_500,
+      currency: "usd",
+      payment_intent: "pi_123",
+    };
     expect(normalizeClientStripeEvent(event("charge.refunded", charge))).toEqual({
       kind: "refund_cumulative",
       externalOrderId: "pi_123",

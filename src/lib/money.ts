@@ -133,7 +133,11 @@ export function formatMinor(amountMinor: number, currency: string, locale = "en-
   }).format(amountMinor / 10 ** exp);
 }
 
-export function formatMinorCompact(amountMinor: number, currency: string, locale = "en-US"): string {
+export function formatMinorCompact(
+  amountMinor: number,
+  currency: string,
+  locale = "en-US",
+): string {
   const exp = currencyExponent(currency);
   return new Intl.NumberFormat(locale, {
     style: "currency",

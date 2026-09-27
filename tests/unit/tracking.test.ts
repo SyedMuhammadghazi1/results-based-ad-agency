@@ -27,28 +27,49 @@ describe("tracking helpers", () => {
   });
 
   it("never keeps query strings from page URLs", () => {
-    expect(splitUrl("https://shop.example.com/p/1?email=a@b.c#x")).toEqual({ host: "shop.example.com", path: "/p/1" });
+    expect(splitUrl("https://shop.example.com/p/1?email=a@b.c#x")).toEqual({
+      host: "shop.example.com",
+      path: "/p/1",
+    });
     expect(splitUrl("not a url")).toEqual({ host: null, path: null });
   });
 
   it("validates touch payloads", () => {
-    const ok = touchPayloadSchema.parse({ pk: "oa_pk_abcdefgh23", vid: "abcdefghijklmnop", params: { oa_cid: "x" } });
+    const ok = touchPayloadSchema.parse({
+      pk: "oa_pk_abcdefgh23",
+      vid: "abcdefghijklmnop",
+      params: { oa_cid: "x" },
+    });
     expect(ok.type).toBe("touch");
     expect(hasTrackedParams(ok.params)).toBe(true);
     expect(hasTrackedParams({})).toBe(false);
-    expect(touchPayloadSchema.safeParse({ pk: "nope", vid: "abcdefghijklmnop" }).success).toBe(false);
-    expect(touchPayloadSchema.safeParse({ pk: "oa_pk_abcdefgh23", vid: "short" }).success).toBe(false);
+    expect(touchPayloadSchema.safeParse({ pk: "nope", vid: "abcdefghijklmnop" }).success).toBe(
+      false,
+    );
+    expect(touchPayloadSchema.safeParse({ pk: "oa_pk_abcdefgh23", vid: "short" }).success).toBe(
+      false,
+    );
     expect(
-      touchPayloadSchema.safeParse({ pk: "oa_pk_abcdefgh23", vid: "abcdefghijklmnop", params: { gclid: "x".repeat(501) } }).success,
+      touchPayloadSchema.safeParse({
+        pk: "oa_pk_abcdefgh23",
+        vid: "abcdefghijklmnop",
+        params: { gclid: "x".repeat(501) },
+      }).success,
     ).toBe(false);
   });
 
   it("builds platform tracking templates that always carry oa_cid", () => {
     for (const platform of ["meta", "google", "tiktok"] as const) {
-      expect(trackingUrlTemplate(platform, "abc123", "https://shop.example.com").template).toContain("oa_cid=abc123");
+      expect(
+        trackingUrlTemplate(platform, "abc123", "https://shop.example.com").template,
+      ).toContain("oa_cid=abc123");
     }
-    expect(trackingUrlTemplate("google", "abc123", "https://x.io").template.startsWith("{lpurl}?")).toBe(true);
-    expect(buildTrackedLandingUrl("https://shop.example.com/p?a=1", "abc")).toBe("https://shop.example.com/p?a=1&oa_cid=abc");
+    expect(
+      trackingUrlTemplate("google", "abc123", "https://x.io").template.startsWith("{lpurl}?"),
+    ).toBe(true);
+    expect(buildTrackedLandingUrl("https://shop.example.com/p?a=1", "abc")).toBe(
+      "https://shop.example.com/p?a=1&oa_cid=abc",
+    );
   });
 
   it("renders the install snippet", () => {

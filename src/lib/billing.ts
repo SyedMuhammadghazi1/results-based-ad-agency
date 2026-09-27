@@ -94,7 +94,8 @@ export function computeStatement(input: StatementInput): Statement {
     if (c.currency !== currency) throw new CurrencyMismatchError(currency, c.currency);
     assertInt(c.amountMinor, "conversion amount");
     assertInt(c.feeRateBps, "fee rate");
-    if (c.amountMinor <= 0) throw new BillingInputError(`conversion ${c.id} has non-positive amount`);
+    if (c.amountMinor <= 0)
+      throw new BillingInputError(`conversion ${c.id} has non-positive amount`);
     if (c.feeRateBps < 0 || c.feeRateBps > 10_000) {
       throw new BillingInputError(`conversion ${c.id} has an invalid fee rate`);
     }
@@ -172,6 +173,7 @@ export function computeStatement(input: StatementInput): Statement {
 /** Human readable invoice line description. */
 export function describeStatement(s: Statement, periodKey: string, format: (n: number) => string) {
   const rates = s.feeLines.map((l) => `${l.feeRateBps / 100}%`).join(" / ");
-  const credit = s.creditAppliedMinor > 0 ? `, less ${format(s.creditAppliedMinor)} refund credit` : "";
+  const credit =
+    s.creditAppliedMinor > 0 ? `, less ${format(s.creditAppliedMinor)} refund credit` : "";
   return `Performance fee ${periodKey}: ${rates || "0%"} of ${format(s.netRevenueMinor)} attributed revenue${credit}`;
 }

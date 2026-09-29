@@ -17,14 +17,39 @@ permissions:
   contents: read
 
 jobs:
-  image:
-    name: Build & push image to GHCR
+  guard:
+    name: Skip superseded commits
     # Never for failed runs or pull requests (including forks whose branch is also called "main").
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      current: ${{ steps.head.outputs.current }}
+    steps:
+      - name: Deploy only the commit that is still the head of main
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          # CI runs can finish out of order; an older commit must never overwrite a newer release.
+          head_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)
+          if [ "$head_sha" = "$TESTED_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::main is now at $head_sha; skipping deploy of superseded commit $TESTED_SHA."
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  image:
+    name: Build & push image to GHCR
+    needs: guard
+    if: needs.guard.outputs.current == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

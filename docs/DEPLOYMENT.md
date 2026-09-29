@@ -24,7 +24,9 @@ Behind a TLS-intercepting corporate proxy, pass its CA only for the install step
 `.github/workflows/deploy.yml` publishes `ghcr.io/<owner>/<repo>:<git sha>` and `:latest` only
 after the `CI` workflow succeeds for a push to `main` (`workflow_run`; never for pull requests or
 failed runs), building the exact commit CI tested (`head_sha`). It can also be started manually
-(`workflow_dispatch`). The scheduled-jobs workflow (`cron.yml`) is independent of deploys.
+(`workflow_dispatch`, which redeploys the current head of `main`). A `guard` job first skips any
+commit that is no longer the head of `main`, so a slow CI run for an older commit can never
+overwrite a newer release. The scheduled-jobs workflow (`cron.yml`) is independent of deploys.
 
 ## 2. Configuration
 

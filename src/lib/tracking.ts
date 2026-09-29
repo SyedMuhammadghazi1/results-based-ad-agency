@@ -14,6 +14,17 @@ export const TRACKED_PARAMS = [
   "oa_cid",
 ] as const;
 
+/**
+ * Limits on `POST /api/track/touch` (fixed windows). The per-IP limit is checked first and is far
+ * below the per-key (per-site) limit, so a single client IP can use at most a small fraction of a
+ * site's budget and cannot lock the site's real visitors out. A flood spread over many IPs can
+ * still exhaust a key — see SECURITY.md.
+ */
+export const TOUCH_RATE_LIMITS = {
+  perIp: { limit: 120, windowSec: 60 },
+  perKey: { limit: 6000, windowSec: 60 },
+} as const;
+
 const param = z.string().trim().max(500).optional();
 
 export const touchPayloadSchema = z.object({

@@ -6,6 +6,7 @@ import {
   isOriginAllowed,
   normalizeOrigin,
   splitUrl,
+  TOUCH_RATE_LIMITS,
   touchPayloadSchema,
   trackingUrlTemplate,
 } from "@/lib/tracking";
@@ -76,5 +77,16 @@ describe("tracking helpers", () => {
     expect(installSnippet("https://app.example.com/", "oa_pk_x")).toBe(
       '<script async src="https://app.example.com/t.js" data-key="oa_pk_x"></script>',
     );
+  });
+});
+
+describe("tracking endpoint rate limits", () => {
+  it("keeps the per-IP limit far below the per-key limit, so one IP cannot exhaust a site's key", () => {
+    const { perIp, perKey } = TOUCH_RATE_LIMITS;
+    expect(perIp.windowSec).toBe(perKey.windowSec);
+    // One client IP may use at most 5% of a site's per-key budget in any window.
+    expect(perIp.limit * 20).toBeLessThanOrEqual(perKey.limit);
+    // …while still allowing a busy shared IP (office / carrier NAT) a touch every second.
+    expect(perIp.limit / perIp.windowSec).toBeGreaterThanOrEqual(1);
   });
 });

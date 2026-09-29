@@ -44,3 +44,12 @@ do not open public issues for vulnerabilities. We aim to acknowledge within 2 bu
 - The client IP is only as trustworthy as the `CLIENT_IP_HEADER` / `TRUSTED_PROXY_HOPS` setting
   (docs/DEPLOYMENT.md): if the app is reachable without going through the configured proxy, the
   header can be forged. Restrict the origin to the proxy/CDN.
+- **Distributed flood of the tracking endpoint (residual risk).** `POST /api/track/touch` is public
+  and a site's public key is visible in its page source. Limits are 120 requests/min per client IP
+  (IPv6 per /64, checked first) and 6,000/min per key, so one IP can use at most 2% of a site's
+  budget and cannot block its visitors. A flood spread over roughly 50+ IPs (a botnet, many IPv6
+  /64s) can still exhaust a key for the rest of the minute; the `Origin` allow-list does not help
+  because non-browser clients forge it. Impact: real visitors' touches are dropped with 429 for
+  that window, so their orders may go unattributed (clients are under-billed, never over-billed)
+  and each request still costs database writes. If a site's 429 rate spikes, add edge
+  protection (CDN/WAF rate limiting or bot filtering on `/api/track/touch`).

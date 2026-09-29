@@ -75,7 +75,8 @@ Money is `bigint` minor units + ISO currency everywhere. Rates are basis points.
    `oa_vid` cookie (random 128-bit id, 180 days, `SameSite=Lax`) and posts a touch as `text/plain`
    (no CORS preflight) with `keepalive`. Without parameters it sends one "ping" per session so the
    install shows as live. On Shopify it writes `oa_vid` into the cart attributes.
-2. `POST /api/track/touch` validates with Zod, rate limits per IP and per org, checks the `Origin`
+2. `POST /api/track/touch` validates with Zod, rate limits per IP (checked first, far below the
+   per-key limit so one IP cannot exhaust it) and per org key, checks the `Origin`
    against the org's allow-list and stores only touches that carry tracked parameters.
 3. Orders arrive from the S2S API, Shopify or the client's Stripe and are normalised by
    `lib/revenue-sources.ts` (revenue excludes tax).

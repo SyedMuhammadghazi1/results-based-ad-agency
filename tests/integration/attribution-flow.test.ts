@@ -5,7 +5,8 @@ import { GET as ordersGET } from "@/app/api/client/orders/route";
 import { GET as summaryGET } from "@/app/api/client/summary/route";
 import { OPTIONS as touchOPTIONS, POST as touchPOST } from "@/app/api/track/touch/route";
 import { db } from "@/db";
-import { conversions, organizations, touches } from "@/db/schema";
+import { conversions, organizations, rateLimits, touches } from "@/db/schema";
+import { TOUCH_RATE_LIMITS } from "@/lib/tracking";
 import {
   activeCampaign,
   createUser,
@@ -19,15 +20,16 @@ import {
 function touch(
   pk: string,
   params: Record<string, string>,
-  opts: { origin?: string; vid?: string; type?: string } = {},
+  opts: { origin?: string; vid?: string; type?: string; xff?: string | null } = {},
 ) {
+  const xff = opts.xff === undefined ? "198.51.100.7" : opts.xff;
   return touchPOST(
     new Request("http://localhost:3003/api/track/touch", {
       method: "POST",
       headers: {
         "content-type": "text/plain",
         origin: opts.origin ?? SITE,
-        "x-forwarded-for": "198.51.100.7",
+        ...(xff ? { "x-forwarded-for": xff } : {}),
       },
       body: JSON.stringify({
         pk,
@@ -284,5 +286,37 @@ describe("tracking endpoint", () => {
     let last = 0;
     for (let i = 0; i < 125; i++) last = (await touch(org.publicKey, {}, { type: "ping" })).status;
     expect(last).toBe(429);
+  });
+
+  it("stops a single-IP flood before it can exhaust the site's per-key limit", async () => {
+    const owner = await createUser("client");
+    const { org } = await onboardedOrg(owner);
+    const statuses: number[] = [];
+    for (let i = 0; i < TOUCH_RATE_LIMITS.perIp.limit + 10; i++) {
+      // Rotating a spoofed left-most X-Forwarded-For entry does not give the attacker new buckets.
+      const xff = `10.${i % 250}.0.1, 198.51.100.66`;
+      statuses.push((await touch(org.publicKey, {}, { type: "ping", xff })).status);
+    }
+    expect(statuses.filter((s) => s === 429)).toHaveLength(10);
+    // Only the requests the per-IP limit let through counted against the site's key…
+    const [keyBucket] = await db
+      .select()
+      .from(rateLimits)
+      .where(eq(rateLimits.key, `touch:org:${org.publicKey}`));
+    expect(keyBucket!.count).toBe(TOUCH_RATE_LIMITS.perIp.limit);
+    expect(keyBucket!.count * 20).toBeLessThanOrEqual(TOUCH_RATE_LIMITS.perKey.limit);
+    // …so real visitors on other IPs keep being tracked.
+    const visitor = await touch(org.publicKey, {}, { type: "ping", xff: "203.0.113.20" });
+    expect(visitor.status).toBe(200);
+  });
+
+  it("without a trusted client IP, relies on the per-key limit instead of one shared bucket", async () => {
+    const owner = await createUser("client");
+    const { org } = await onboardedOrg(owner);
+    let last = 0;
+    for (let i = 0; i < TOUCH_RATE_LIMITS.perIp.limit + 5; i++) {
+      last = (await touch(org.publicKey, {}, { type: "ping", xff: null })).status;
+    }
+    expect(last).toBe(200);
   });
 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { touchPayloadSchema } from "@/lib/tracking";
+import { TOUCH_RATE_LIMITS, touchPayloadSchema } from "@/lib/tracking";
 import { clientIp } from "@/server/client-ip";
 import { handleRouteError, jsonError, rateLimitedResponse } from "@/server/http";
 import { rateLimit, rateLimitByIp } from "@/server/rate-limit";
@@ -17,8 +17,16 @@ export function OPTIONS(req: Request) {
 export async function POST(req: Request) {
   const origin = req.headers.get("origin");
   try {
-    // Unknown client IP: the per-key limit below still applies (no bucket shared by everyone).
-    const ipLimit = await rateLimitByIp("touch:ip", clientIp(req.headers), 120, 60, "skip");
+    const { perIp, perKey } = TOUCH_RATE_LIMITS;
+    // Checked first, so a flooding IP never eats into its target's per-key budget. Unknown
+    // client IP: the per-key limit below still applies (no bucket shared by everyone).
+    const ipLimit = await rateLimitByIp(
+      "touch:ip",
+      clientIp(req.headers),
+      perIp.limit,
+      perIp.windowSec,
+      "skip",
+    );
     if (ipLimit && !ipLimit.allowed)
       return rateLimitedResponse(ipLimit, corsHeaders(origin, false));
 
@@ -35,7 +43,7 @@ export async function POST(req: Request) {
     if (!parsed.success)
       return jsonError(400, "invalid_request", "Invalid touch payload", corsHeaders(origin, false));
 
-    const orgLimit = await rateLimit("touch:org", parsed.data.pk, 6000, 60);
+    const orgLimit = await rateLimit("touch:org", parsed.data.pk, perKey.limit, perKey.windowSec);
     if (!orgLimit.allowed) return rateLimitedResponse(orgLimit, corsHeaders(origin, false));
 
     const result = await ingestTouch(parsed.data, origin);

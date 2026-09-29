@@ -188,7 +188,8 @@ docker run --rm --env-file .env outcome-ads node job.mjs sync-spend  # a job, if
 ```
 
 CI (`.github/workflows/ci.yml`) runs lint, format, typecheck, migrations, unit + integration tests,
-build, Playwright and a Docker build/start check. `deploy.yml` pushes `ghcr.io/<repo>:<sha>` and
+build, Playwright and a Docker build/start check. `deploy.yml` runs only after CI succeeds for a
+push to `main` (or manually): it builds the exact commit CI tested, pushes `ghcr.io/<repo>:<sha>` and
 `:latest`, runs migrations with `PRODUCTION_DATABASE_URL` and calls `DEPLOY_HOOK_URL` (both skipped
 with a notice when unset). Vercel + Neon, Render/Fly/Railway, Stripe webhooks, cron and backups are
 covered in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

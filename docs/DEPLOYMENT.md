@@ -21,8 +21,10 @@ The image (node:22-alpine, non-root `nextjs` user, `HEALTHCHECK` on `/api/health
 Behind a TLS-intercepting corporate proxy, pass its CA only for the install step:
 `docker build --secret id=extra_ca,src=/path/ca.crt .` (never baked into a layer).
 
-CI publishes `ghcr.io/<owner>/<repo>:<git sha>` and `:latest` on every push to `main`
-(`.github/workflows/deploy.yml`).
+`.github/workflows/deploy.yml` publishes `ghcr.io/<owner>/<repo>:<git sha>` and `:latest` only
+after the `CI` workflow succeeds for a push to `main` (`workflow_run`; never for pull requests or
+failed runs), building the exact commit CI tested (`head_sha`). It can also be started manually
+(`workflow_dispatch`). The scheduled-jobs workflow (`cron.yml`) is independent of deploys.
 
 ## 2. Configuration
 
@@ -79,7 +81,8 @@ DATABASE_URL=... npm run db:migrate
 ```
 
 The deploy workflow runs this automatically with `secrets.PRODUCTION_DATABASE_URL` in the
-`production` environment, then calls `secrets.DEPLOY_HOOK_URL`.
+`production` environment, then calls `secrets.DEPLOY_HOOK_URL` (POST, with the tested image
+reference as the form field `image`).
 
 ## 4a. Container hosts (Render, Fly.io, Railway, ECS, Kubernetes, a VM)
 

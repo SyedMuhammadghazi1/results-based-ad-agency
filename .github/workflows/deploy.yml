@@ -1,7 +1,11 @@
 name: Deploy
 
 on:
-  push:
+  # Deploy only commits that passed CI: runs when the CI workflow finishes for a push to main.
+  # (`workflows` must match the `name:` of .github/workflows/ci.yml exactly.)
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
 
@@ -12,24 +16,34 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  IMAGE: ghcr.io/${{ github.repository }}
-
 jobs:
   image:
     name: Build & push image to GHCR
+    # Never for failed runs or pull requests (including forks whose branch is also called "main").
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     outputs:
       image: ${{ steps.meta.outputs.image }}
+      sha: ${{ steps.meta.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-
       - id: meta
-        name: Compute image name
-        run: echo "image=$(echo "${IMAGE}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+        name: Image name (GHCR requires lowercase) and the commit CI tested
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.meta.outputs.sha }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -44,7 +58,7 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ steps.meta.outputs.image }}:${{ github.sha }}
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha }}
             ${{ steps.meta.outputs.image }}:latest
           build-args: |
             NEXT_PUBLIC_APP_NAME=${{ vars.NEXT_PUBLIC_APP_NAME || 'Outcome Ads' }}
@@ -63,7 +77,7 @@ jobs:
       - name: Apply migrations with the new image
         env:
           DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
-          IMAGE: ${{ needs.image.outputs.image }}:${{ github.sha }}
+          IMAGE: ${{ needs.image.outputs.image }}:${{ needs.image.outputs.sha }}
         run: |
           if [ -z "$DATABASE_URL" ]; then
             echo "::notice::PRODUCTION_DATABASE_URL is not set — skipping migrations."
@@ -74,16 +88,18 @@ jobs:
 
   deploy:
     name: Trigger deploy
-    needs: migrate
+    needs: [image, migrate]
     runs-on: ubuntu-latest
     environment: production
     steps:
       - name: Call deploy hook
         env:
           DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+          IMAGE: ${{ needs.image.outputs.image }}:${{ needs.image.outputs.sha }}
         run: |
           if [ -z "$DEPLOY_HOOK_URL" ]; then
-            echo "::notice::DEPLOY_HOOK_URL is not set — skipping deploy. The image is published to GHCR."
+            echo "::notice::DEPLOY_HOOK_URL is not set — skipping deploy. $IMAGE is published to GHCR."
             exit 0
           fi
-          curl -fsS -X POST "$DEPLOY_HOOK_URL"
+          curl -fsS -X POST "$DEPLOY_HOOK_URL" --data-urlencode "image=$IMAGE" \
+            -o /dev/null -w "deploy hook responded %{http_code}\n"

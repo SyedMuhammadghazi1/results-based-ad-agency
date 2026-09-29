@@ -130,7 +130,9 @@ http://localhost:8027). With `SMTP_HOST` empty, emails are logged instead.
 ## Environment variables
 
 Every variable is validated in [`src/env.ts`](src/env.ts); `.env.example` documents each one.
-`SKIP_ENV_VALIDATION=1` relaxes validation for `next build` / CI only.
+`SKIP_ENV_VALIDATION=1` relaxes validation for `next build` / CI only: a running production server
+(`NODE_ENV=production` outside the `next build` phase) ignores it and refuses to start with missing
+or invalid values.
 
 | Variable                                                                                                                                   | Required      | Purpose                                                               |
 | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------- | --------------------------------------------------------------------- |

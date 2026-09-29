@@ -3,9 +3,10 @@ import { z } from "zod";
 /**
  * Centralised, validated environment configuration.
  *
- * Validation fails fast at runtime. `SKIP_ENV_VALIDATION=1` relaxes it (used by `next build`
- * and CI steps that never talk to real services); in that mode missing values are `undefined`
- * and any code path that needs them fails loudly when it runs.
+ * Validation fails fast at runtime. `SKIP_ENV_VALIDATION=1` relaxes it for `next build` and
+ * CI/dev tooling that never talks to real services; in that mode missing values are `undefined`
+ * (never placeholders) and any code path that needs them fails loudly when it runs. A running
+ * production server ignores the flag — see `envValidationSkipped`.
  */
 
 const bool = z
@@ -83,17 +84,27 @@ const schema = z.object({
 
 export type Env = z.infer<typeof schema>;
 
-function loadEnv(): Env {
-  const skip =
-    process.env.SKIP_ENV_VALIDATION === "1" || process.env.SKIP_ENV_VALIDATION === "true";
-  const parsed = schema.safeParse(process.env);
+/**
+ * Whether `SKIP_ENV_VALIDATION` applies. With `NODE_ENV=production` it only does during
+ * `next build` (Next sets `NEXT_PHASE=phase-production-build`): a production server that inherited
+ * the flag (e.g. from a build image or a copied env file) still validates and fails fast.
+ */
+export function envValidationSkipped(source: NodeJS.ProcessEnv = process.env): boolean {
+  const requested = source.SKIP_ENV_VALIDATION === "1" || source.SKIP_ENV_VALIDATION === "true";
+  if (!requested) return false;
+  if (source.NODE_ENV !== "production") return true;
+  return source.NEXT_PHASE === "phase-production-build";
+}
+
+export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  const parsed = schema.safeParse(source);
   if (parsed.success) return parsed.data;
-  if (skip) {
+  if (envValidationSkipped(source)) {
     // Lenient mode: keep every value that validates on its own (with defaults applied) and
     // leave the rest undefined.
     const lenient: Record<string, unknown> = {};
     for (const [key, field] of Object.entries(schema.shape)) {
-      const result = (field as z.ZodType).safeParse(process.env[key]);
+      const result = (field as z.ZodType).safeParse(source[key]);
       lenient[key] = result.success ? result.data : undefined;
     }
     return lenient as Env;

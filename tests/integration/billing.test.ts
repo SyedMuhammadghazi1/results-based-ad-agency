@@ -273,6 +273,50 @@ describe("monthly billing", () => {
     expect(mock.invoices.create).toHaveBeenCalledTimes(2); // July and September only
   });
 
+  it("ignores refunds still waiting for their order, then bills them net once it arrives", async () => {
+    const { org, code } = await billableClient();
+    const { stripe } = fakeStripe();
+    // August: a $1,000 order, and a $200 refund of an order we haven't received yet.
+    await attributedOrder(org, code, "A-1", 100_000, day(AUG, 3));
+    expect(
+      await recordRefund(org, "api", {
+        kind: "refund",
+        externalOrderId: "LATE-1",
+        externalRefundId: "rf-LATE-1",
+        occurredAt: day(AUG, 20),
+        amountMinor: 20_000,
+        currency: "USD",
+      }),
+    ).toMatchObject({ status: "pending" });
+    await runMonthlyBilling({ now: SEP_1, stripe });
+    const aug = (
+      await db.select().from(billingPeriods).where(eq(billingPeriods.periodStart, "2026-08-01"))
+    )[0]!;
+    // The pending refund is not a revenue adjustment: no reduction, no credit.
+    expect(aug).toMatchObject({
+      grossRevenueMinor: 100_000,
+      netRevenueMinor: 100_000,
+      grossFeeMinor: 10_000,
+      creditGeneratedMinor: 0,
+      creditCarriedOutMinor: 0,
+      amountDueMinor: 10_000,
+    });
+    // The (August) order arrives late: the refund is applied to it and the next run bills both
+    // net — $500 − $200 = $300 → $30 fee — instead of the full $500.
+    await attributedOrder(org, code, "LATE-1", 50_000, day(AUG, 18));
+    await runMonthlyBilling({ now: new Date("2026-10-01T06:00:00Z"), period: "2026-09", stripe });
+    const sep = (
+      await db.select().from(billingPeriods).where(eq(billingPeriods.periodStart, "2026-09-01"))
+    )[0]!;
+    expect(sep).toMatchObject({
+      grossRevenueMinor: 50_000,
+      netRevenueMinor: 30_000,
+      grossFeeMinor: 3_000,
+      creditGeneratedMinor: 0,
+      amountDueMinor: 3_000,
+    });
+  });
+
   it("bills each rate separately after a new agreement version", async () => {
     const { owner, org, code } = await billableClient();
     await attributedOrder(org, code, "R-10", 100_005, day(AUG, 2));

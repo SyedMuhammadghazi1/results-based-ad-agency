@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   attributeConversion,
   classifyTouch,
+  planPendingRefunds,
   planRefund,
+  planRefundEvent,
   revenueShareOfGrossRefund,
   windowStartFor,
   type AttributableTouch,
   type CampaignRef,
+  type RefundEventInput,
 } from "@/lib/attribution";
 
 const DAY = 86_400_000;
@@ -305,5 +308,107 @@ describe("revenueShareOfGrossRefund", () => {
     expect(revenueShareOfGrossRefund(5_000, 20_000, 20_000)).toBe(5_000);
     expect(revenueShareOfGrossRefund(5_000, 20_000, undefined)).toBe(5_000);
     expect(revenueShareOfGrossRefund(5_000, 20_000, 0)).toBe(5_000);
+  });
+});
+
+describe("planRefundEvent", () => {
+  it("applies a per-refund amount with the cap (order-then-refund behaviour is unchanged)", () => {
+    const conv = { amountMinor: 10_000, refundedMinor: 0 };
+    expect(
+      planRefundEvent(conv, { kind: "refund", externalRefundId: "r1", amountMinor: 3_000 }),
+    ).toEqual(planRefund(10_000, 0, 3_000));
+    expect(
+      planRefundEvent(
+        { amountMinor: 10_000, refundedMinor: 7_000 },
+        {
+          kind: "refund",
+          externalRefundId: "r2",
+          amountMinor: 5_000,
+        },
+      ),
+    ).toEqual({ ok: true, adjustmentMinor: -3_000, newRefundedMinor: 10_000 });
+  });
+
+  it("pro-rates Stripe's cumulative tax-inclusive refunds and turns them into deltas", () => {
+    const cumulative = (n: number): RefundEventInput => ({
+      kind: "refund_cumulative",
+      externalRefundId: `ch_1:${n}`,
+      cumulativeRefundedMinor: n,
+      chargedGrossMinor: 21_600,
+    });
+    expect(planRefundEvent({ amountMinor: 20_000, refundedMinor: 0 }, cumulative(5_000))).toEqual({
+      ok: true,
+      adjustmentMinor: -4_630,
+      newRefundedMinor: 4_630,
+    });
+    expect(
+      planRefundEvent({ amountMinor: 20_000, refundedMinor: 4_630 }, cumulative(12_000)),
+    ).toMatchObject({ ok: true, adjustmentMinor: -6_481 });
+    // An older cumulative total than what is already recorded adds nothing.
+    expect(
+      planRefundEvent({ amountMinor: 20_000, refundedMinor: 11_111 }, cumulative(5_000)),
+    ).toEqual({ ok: false, reason: "no_new_refund" });
+  });
+});
+
+describe("planPendingRefunds (refunds that arrived before their order)", () => {
+  const conv = { amountMinor: 10_000, refundedMinor: 0 };
+  const refund = (id: string, amountMinor: number): RefundEventInput => ({
+    kind: "refund",
+    externalRefundId: id,
+    amountMinor,
+  });
+  const adjustments = (plans: ReturnType<typeof planPendingRefunds>) =>
+    plans.flatMap((p) => (p.plan.ok ? [p.plan.adjustmentMinor] : []));
+
+  it("nets refund-then-order exactly like order-then-refund", () => {
+    const plans = planPendingRefunds(conv, [refund("r1", 3_000), refund("r2", 2_500)]);
+    expect(adjustments(plans)).toEqual([-3_000, -2_500]);
+    // Same result as applying them one by one after the order.
+    const first = planRefund(10_000, 0, 3_000);
+    const second = planRefund(10_000, first.ok ? first.newRefundedMinor : 0, 2_500);
+    expect(adjustments(plans)).toEqual([first, second].map((p) => (p.ok ? p.adjustmentMinor : 0)));
+  });
+
+  it("caps the total at the order amount across pending refunds", () => {
+    const plans = planPendingRefunds(conv, [
+      refund("r1", 6_000),
+      refund("r2", 6_000),
+      refund("r3", 1),
+    ]);
+    expect(adjustments(plans)).toEqual([-6_000, -4_000]);
+    expect(plans[2]!.plan).toEqual({ ok: false, reason: "already_fully_refunded" });
+  });
+
+  it("dedupes a refund delivered twice, and refunds already recorded", () => {
+    const plans = planPendingRefunds(
+      conv,
+      [refund("r1", 3_000), refund("r1", 3_000), refund("r0", 1_000)],
+      new Set(["r0"]),
+    );
+    expect(adjustments(plans)).toEqual([-3_000]);
+    expect(plans.map((p) => p.plan)).toMatchObject([
+      { ok: true },
+      { ok: false, reason: "duplicate" },
+      { ok: false, reason: "duplicate" },
+    ]);
+  });
+
+  it("converges on the latest cumulative Stripe total whatever order the events arrived in", () => {
+    const cumulative = (n: number): RefundEventInput => ({
+      kind: "refund_cumulative",
+      externalRefundId: `ch_1:${n}`,
+      cumulativeRefundedMinor: n,
+      chargedGrossMinor: 21_600,
+    });
+    const order = { amountMinor: 20_000, refundedMinor: 0 };
+    const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+    const inOrder = adjustments(planPendingRefunds(order, [cumulative(5_000), cumulative(12_000)]));
+    const reversed = adjustments(
+      planPendingRefunds(order, [cumulative(12_000), cumulative(5_000)]),
+    );
+    expect(inOrder).toEqual([-4_630, -6_481]);
+    expect(sum(reversed)).toBe(sum(inOrder));
+    expect(sum(inOrder)).toBe(-11_111);
   });
 });

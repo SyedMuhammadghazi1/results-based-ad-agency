@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { db } from "@/db";
-import { emailSends, jobRuns } from "@/db/schema";
+import { emailSends, jobRuns, pendingRefunds } from "@/db/schema";
 import { executeJob } from "@/jobs";
+import { runCleanup } from "@/jobs/cleanup";
 import { runWeeklyRevenueReport } from "@/jobs/weekly-revenue-report";
+import { addDays } from "@/lib/dates";
 import { recordConversion } from "@/server/conversions";
 import { outbox } from "@/server/mailer";
 import { acceptInvitation, inviteMember } from "@/server/orgs";
@@ -68,5 +70,30 @@ describe("job runner", () => {
     const [run] = await db.select().from(jobRuns);
     expect(run).toMatchObject({ job: "cleanup", status: "succeeded" });
     expect(run!.finishedAt).not.toBeNull();
+  });
+});
+
+describe("cleanup", () => {
+  it("expires refunds whose order never arrived within 90 days", async () => {
+    const owner = await createUser("client");
+    const { org } = await onboardedOrg(owner);
+    const now = new Date("2026-09-29T03:45:00Z");
+    const pending = (id: string, receivedAt: Date) => ({
+      orgId: org.id,
+      source: "shopify" as const,
+      externalOrderId: `order-${id}`,
+      externalRefundId: id,
+      kind: "refund" as const,
+      amountMinor: 1_000,
+      currency: "USD",
+      occurredAt: receivedAt,
+      receivedAt,
+    });
+    await db
+      .insert(pendingRefunds)
+      .values([pending("old", addDays(now, -91)), pending("recent", addDays(now, -89))]);
+    expect(await runCleanup({ now })).toMatchObject({ expiredPendingRefunds: 1 });
+    const left = await db.select().from(pendingRefunds);
+    expect(left.map((r) => r.externalRefundId)).toEqual(["recent"]);
   });
 });

@@ -44,7 +44,11 @@ import { getStripe, type StripeClient } from "./stripe";
 // Monthly statement
 // ---------------------------------------------------------------------------
 
-/** Loads every unbilled item up to the period end and computes the statement (no writes). */
+/**
+ * Loads every unbilled item up to the period end and computes the statement (no writes). Refunds
+ * still waiting for their order (`pending_refunds`) are deliberately not read: they only become
+ * adjustments once matched to a conversion.
+ */
 export async function draftStatement(
   org: Organization,
   periodEnd: Date,

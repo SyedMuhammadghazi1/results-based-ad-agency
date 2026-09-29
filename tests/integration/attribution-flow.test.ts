@@ -5,8 +5,16 @@ import { GET as ordersGET } from "@/app/api/client/orders/route";
 import { GET as summaryGET } from "@/app/api/client/summary/route";
 import { OPTIONS as touchOPTIONS, POST as touchPOST } from "@/app/api/track/touch/route";
 import { db } from "@/db";
-import { conversions, organizations, rateLimits, touches } from "@/db/schema";
+import {
+  conversionAdjustments,
+  conversions,
+  organizations,
+  pendingRefunds,
+  rateLimits,
+  touches,
+} from "@/db/schema";
 import { TOUCH_RATE_LIMITS } from "@/lib/tracking";
+import { recordConversion, recordRefund } from "@/server/conversions";
 import {
   activeCampaign,
   createUser,
@@ -186,6 +194,81 @@ describe("touch + conversion → attribution → dashboard", () => {
     ).json();
     expect(summary.revenueThisMonthMinor).toBe(0);
     expect(summary.attributedOrdersThisMonth).toBe(1);
+  });
+
+  it("accepts a refund sent before its order (202) and nets it once the order arrives", async () => {
+    const owner = await createUser("client");
+    const operator = await createUser("operator");
+    const { org, apiKey } = await onboardedOrg(owner);
+    const campaign = await activeCampaign(operator, org.id);
+    await touch(org.publicKey, { oa_cid: campaign.trackingCode });
+    const refund = {
+      type: "refund",
+      order_id: "EARLY-1",
+      refund_id: "rf-early",
+      amount_minor: 2_500,
+      currency: "USD",
+      occurred_at: nowIso(),
+    };
+    const early = await conversion(apiKey, refund);
+    expect(early.status).toBe(202);
+    expect(await early.json()).toMatchObject({ status: "pending" });
+    const dup = await conversion(apiKey, refund);
+    expect(dup.status).toBe(200);
+    expect(await dup.json()).toMatchObject({ status: "duplicate" });
+
+    const order = await conversion(apiKey, {
+      type: "conversion",
+      order_id: "EARLY-1",
+      amount_minor: 10_000,
+      currency: "USD",
+      occurred_at: nowIso(),
+      visitor_id: VISITOR,
+    });
+    expect(order.status).toBe(201);
+    expect(await order.json()).toMatchObject({
+      status: "recorded",
+      attributed: true,
+      pendingRefundsApplied: 1,
+    });
+    const summary = await (
+      await summaryGET(getRequest("/api/client/summary", owner.headers))
+    ).json();
+    expect(summary.revenueThisMonthMinor).toBe(7_500);
+    expect(await db.select().from(pendingRefunds)).toHaveLength(0);
+  });
+
+  it("never loses a refund delivered at the same time as its order", async () => {
+    const owner = await createUser("client");
+    const { org } = await onboardedOrg(owner);
+    const at = new Date();
+    await Promise.all(
+      Array.from({ length: 8 }, (_, i) =>
+        Promise.all([
+          recordRefund(org, "api", {
+            kind: "refund",
+            externalOrderId: `RACE-${i}`,
+            externalRefundId: `rf-race-${i}`,
+            occurredAt: at,
+            amountMinor: 1_000,
+            currency: "USD",
+          }),
+          recordConversion(org, "api", {
+            kind: "conversion",
+            externalOrderId: `RACE-${i}`,
+            occurredAt: at,
+            amountMinor: 5_000,
+            currency: "USD",
+            visitorId: null,
+          }),
+        ]),
+      ),
+    );
+    const rows = await db.select().from(conversions);
+    expect(rows).toHaveLength(8);
+    expect(rows.map((r) => r.refundedMinor)).toEqual(Array(8).fill(1_000));
+    expect(await db.select().from(conversionAdjustments)).toHaveLength(8);
+    expect(await db.select().from(pendingRefunds)).toHaveLength(0);
   });
 
   it("rejects bad API keys, other currencies, future dates and invalid payloads", async () => {

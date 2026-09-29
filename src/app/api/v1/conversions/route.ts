@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * Server-to-server conversions & refunds, authenticated with the org's secret API key
- * (`Authorization: Bearer oa_sk_…`). Idempotent on (org, order_id) and (org, refund_id).
+ * (`Authorization: Bearer oa_sk_…`). Idempotent on (org, order_id) and (org, refund_id). A refund
+ * sent before its order is accepted (202) and applied when the order arrives.
  */
 export async function POST(req: Request) {
   try {
@@ -23,7 +24,15 @@ export async function POST(req: Request) {
 
     const event = normalizeS2sEvent(s2sEventSchema.parse(await req.json()));
     const outcome = await processRevenueEvent(org, "api", event);
-    const status = outcome.status === "recorded" ? 201 : outcome.status === "rejected" ? 422 : 200;
+    // "pending": a refund for an order we haven't received yet — kept and applied when it arrives.
+    const status =
+      outcome.status === "recorded"
+        ? 201
+        : outcome.status === "pending"
+          ? 202
+          : outcome.status === "rejected"
+            ? 422
+            : 200;
     return NextResponse.json(outcome, { status });
   } catch (err) {
     if (err instanceof SyntaxError) return jsonError(400, "invalid_json");

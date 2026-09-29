@@ -193,3 +193,62 @@ export function revenueShareOfGrossRefund(
     ),
   );
 }
+
+/** A refund as reported by a revenue source (the fields refund planning needs). */
+export type RefundEventInput =
+  | { kind: "refund"; externalRefundId: string; amountMinor: number }
+  | {
+      kind: "refund_cumulative";
+      externalRefundId: string;
+      /** Stripe: cumulative refunded amount on the charge, tax included. */
+      cumulativeRefundedMinor: number;
+      chargedGrossMinor?: number | null;
+    };
+
+export type RefundEventPlan = RefundPlan | { ok: false; reason: "no_new_refund" };
+
+/**
+ * Plans one refund event against a conversion. A per-refund amount goes straight to
+ * `planRefund`; Stripe's cumulative, tax-inclusive total is pro-rated to revenue and turned into
+ * the delta over what is already recorded first.
+ */
+export function planRefundEvent(
+  conversion: { amountMinor: number; refundedMinor: number },
+  ev: RefundEventInput,
+): RefundEventPlan {
+  const { amountMinor, refundedMinor } = conversion;
+  if (ev.kind === "refund") return planRefund(amountMinor, refundedMinor, ev.amountMinor);
+  const requested =
+    revenueShareOfGrossRefund(ev.cumulativeRefundedMinor, amountMinor, ev.chargedGrossMinor) -
+    refundedMinor;
+  if (requested <= 0) return { ok: false, reason: "no_new_refund" };
+  return planRefund(amountMinor, refundedMinor, requested);
+}
+
+export type PendingRefundPlan = {
+  externalRefundId: string;
+  plan: RefundEventPlan | { ok: false; reason: "duplicate" };
+};
+
+/**
+ * Plans refunds that arrived BEFORE their order, oldest first, exactly as if each had arrived
+ * after it (same pro-rating and cap via `planRefundEvent`). Each refund id is applied at most once;
+ * `recorded` holds refund ids that already have an adjustment.
+ */
+export function planPendingRefunds(
+  conversion: { amountMinor: number; refundedMinor: number },
+  refunds: RefundEventInput[],
+  recorded: ReadonlySet<string> = new Set(),
+): PendingRefundPlan[] {
+  const seen = new Set(recorded);
+  let refundedMinor = conversion.refundedMinor;
+  return refunds.map((ev) => {
+    if (seen.has(ev.externalRefundId)) {
+      return { externalRefundId: ev.externalRefundId, plan: { ok: false, reason: "duplicate" } };
+    }
+    seen.add(ev.externalRefundId);
+    const plan = planRefundEvent({ amountMinor: conversion.amountMinor, refundedMinor }, ev);
+    if (plan.ok) refundedMinor = plan.newRefundedMinor;
+    return { externalRefundId: ev.externalRefundId, plan };
+  });
+}

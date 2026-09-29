@@ -64,6 +64,7 @@ scripts/               migrate, seed, run-job, rotate-secrets, CLI bundler
 | `touches`                                                                                         | Tracked ad clicks: visitor id, landing host/path, referrer host, utm/click ids, `oa_cid` — no IP, no query string                                    |
 | `conversions`                                                                                     | Orders: unique (org, source, external order id), amount, refunded total, attribution result, snapshotted agreement + fee bps, billing period         |
 | `conversion_adjustments`                                                                          | Refunds (negative), unique (org, source, external refund id), linked to the conversion                                                               |
+| `pending_refunds`                                                                                 | Refunds received before their order: unique (org, source, external refund id); applied when the order is recorded; not read by billing               |
 | `billing_periods`                                                                                 | Monthly statements: unique (org, period_start), fee lines, credits in/generated/applied/out, amount due, Stripe invoice                              |
 | `alerts`, `audit_log`, `webhook_events`, `rate_limits`, `job_runs`, `email_sends`, `applications` | Operations                                                                                                                                           |
 
@@ -90,6 +91,14 @@ Money is `bigint` minor units + ISO currency everywhere. Rates are basis points.
 6. Refunds become negative `conversion_adjustments`, capped so a conversion's refunds never exceed
    its amount. Stripe reports cumulative, tax-inclusive refunds; the service pro-rates them to the
    ex-tax revenue share (revenue ÷ charged amount) and converts them to deltas.
+7. Shopify and Stripe don't guarantee webhook order, so a refund can arrive before its order. It is
+   acknowledged (never failed: Shopify deletes webhooks that keep failing; the S2S API answers
+   `202 pending`) and stored in `pending_refunds`, deduped by refund id. When the order is recorded,
+   its pending refunds are applied in the same transaction with the same planning as step 6
+   (`planPendingRefunds`) and deleted. A per-order advisory lock
+   (`hashtext('order:<org>:<source>:<order id>')`) serializes an order with its refunds so a refund
+   racing its order is never lost. `cleanup` expires pending refunds after 90 days (orders from
+   before tracking went live, ignored test orders, …).
 
 ## Billing
 
@@ -99,7 +108,8 @@ Money is `bigint` minor units + ISO currency everywhere. Rates are basis points.
 
 1. If a statement for (org, period) exists → skip (or resume a Stripe invoice that failed to issue).
 2. Load every **unbilled** attributed conversion and refund dated before the period end (late
-   arrivals from earlier months are picked up too).
+   arrivals from earlier months are picked up too). Pending refunds (not yet matched to an order)
+   are not revenue adjustments and are ignored until their order arrives.
 3. `computeStatement` (pure): per fee rate, `fee = round-half-up(net revenue × bps / 10 000)`;
    refunds of conversions on this statement reduce net revenue; refunds of conversions billed on an
    earlier statement generate a credit (`round-half-up(refund × bps / 10 000)`); credit carried in

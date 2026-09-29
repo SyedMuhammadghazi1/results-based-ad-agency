@@ -4,7 +4,7 @@ import { POST as clientStripePOST } from "@/app/api/webhooks/client-stripe/[inte
 import { POST as shopifyPOST } from "@/app/api/webhooks/shopify/[integrationId]/route";
 import { POST as touchPOST } from "@/app/api/track/touch/route";
 import { db } from "@/db";
-import { conversionAdjustments, conversions, integrations } from "@/db/schema";
+import { conversionAdjustments, conversions, integrations, pendingRefunds } from "@/db/schema";
 import { hmacSha256 } from "@/lib/crypto";
 import { saveClientStripe, saveShopify } from "@/server/integrations";
 import { signStripePayload } from "@/server/stripe";
@@ -151,6 +151,62 @@ describe("Shopify webhooks", () => {
     expect(await (await shopify(integration.id, "refunds/create", refund)).json()).toMatchObject({
       status: "duplicate",
     });
+    // Order-then-refund never goes through the pending table.
+    expect(await db.select().from(pendingRefunds)).toHaveLength(0);
+  });
+
+  it("keeps a refund that arrives before its order and nets it when the order arrives", async () => {
+    const { owner, org } = await setup();
+    const integration = await saveShopify(org, owner, {
+      shopDomain: "acme.myshopify.com",
+      webhookSecret: SHOPIFY_SECRET,
+    });
+    const refund = {
+      id: 9101,
+      order_id: 7101,
+      created_at: new Date().toISOString(),
+      transactions: [{ kind: "refund", status: "success", amount: "33.00", currency: "USD" }],
+      refund_line_items: [{ total_tax: "3.00" }],
+    };
+    // Acknowledged with 200 (Shopify deletes webhooks that keep failing), not dropped.
+    const early = await shopify(integration.id, "refunds/create", refund, { deliveryId: "r-1" });
+    expect(early.status).toBe(200);
+    expect(await early.json()).toMatchObject({ status: "pending" });
+    // A second delivery of the same refund (new webhook id) is deduped by refund id.
+    const again = await shopify(integration.id, "refunds/create", refund, { deliveryId: "r-2" });
+    expect(await again.json()).toMatchObject({ status: "duplicate" });
+    const pending = await db.select().from(pendingRefunds);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({
+      orgId: org.id,
+      source: "shopify",
+      externalOrderId: "7101",
+      externalRefundId: "9101",
+      amountMinor: 3_000,
+      currency: "USD",
+    });
+    expect(await db.select().from(conversionAdjustments)).toHaveLength(0);
+
+    const paid = await shopify(integration.id, "orders/paid", order(7101));
+    expect(await paid.json()).toMatchObject({
+      status: "recorded",
+      attributed: true,
+      pendingRefundsApplied: 1,
+    });
+    const [conv] = await db.select().from(conversions);
+    expect(conv).toMatchObject({ amountMinor: 10_000, refundedMinor: 3_000 });
+    const adjustments = await db.select().from(conversionAdjustments);
+    expect(adjustments).toHaveLength(1);
+    expect(adjustments[0]).toMatchObject({
+      conversionId: conv!.id,
+      amountMinor: -3_000,
+      externalRefundId: "9101",
+    });
+    expect(await db.select().from(pendingRefunds)).toHaveLength(0);
+    // Replaying the refund now finds the adjustment.
+    const replay = await shopify(integration.id, "refunds/create", refund, { deliveryId: "r-3" });
+    expect(await replay.json()).toMatchObject({ status: "duplicate" });
+    expect(await db.select().from(conversionAdjustments)).toHaveLength(1);
   });
 
   it("acknowledges restock-only refunds instead of failing (Shopify drops failing webhooks)", async () => {
@@ -258,6 +314,38 @@ describe("client Stripe webhooks", () => {
     ).toMatchObject({
       amountMinor: -8_889,
     });
+    [conv] = await db.select().from(conversions);
+    expect(conv!.refundedMinor).toBe(20_000);
+  });
+
+  it("applies cumulative refunds that arrived before the sale, whatever their order", async () => {
+    const { owner, org } = await setup();
+    const integration = await saveClientStripe(org, owner, { signingSecret: CLIENT_STRIPE_SECRET });
+
+    // Both partial refunds are delivered before the sale, the later one first.
+    expect(
+      await (await stripeEvent(integration.id, refunded("3", 12_000, "evt_r2"))).json(),
+    ).toMatchObject({ status: "pending" });
+    expect(
+      await (await stripeEvent(integration.id, refunded("3", 5_000, "evt_r1"))).json(),
+    ).toMatchObject({ status: "pending" });
+    expect(await db.select().from(pendingRefunds)).toHaveLength(2);
+
+    expect(await (await stripeEvent(integration.id, session("3"))).json()).toMatchObject({
+      status: "recorded",
+      pendingRefundsApplied: 2,
+    });
+    // Same tax pro-rating as when they arrive after the sale: $120 of $216 → $111.11 of $200.
+    let [conv] = await db.select().from(conversions);
+    expect(conv).toMatchObject({ amountMinor: 20_000, refundedMinor: 11_111 });
+    const adjustments = await db.select().from(conversionAdjustments);
+    expect(adjustments.map((a) => a.amountMinor).sort((a, b) => a - b)).toEqual([-6_481, -4_630]);
+    expect(await db.select().from(pendingRefunds)).toHaveLength(0);
+
+    // A later refund of the rest still nets to exactly the revenue.
+    expect(
+      await (await stripeEvent(integration.id, refunded("3", 21_600, "evt_r3"))).json(),
+    ).toMatchObject({ status: "recorded", amountMinor: -8_889 });
     [conv] = await db.select().from(conversions);
     expect(conv!.refundedMinor).toBe(20_000);
   });

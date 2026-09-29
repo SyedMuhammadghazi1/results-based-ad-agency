@@ -28,7 +28,8 @@ points). "Outcome Ads" is a working name, configurable with `NEXT_PUBLIC_APP_NAM
 - **Attribution engine** (pure, heavily unit tested) — last paid-media touch inside the agreement's
   click window; only touches carrying one of our campaign ids (or a paid click id from a platform we
   run) count; organic/direct revenue is never attributed; dedupe by (org, source, order id); refunds
-  become negative adjustments linked to the order; one currency per org, integer minor units.
+  become negative adjustments linked to the order (a refund that arrives before its order is kept
+  and applied when the order arrives); one currency per org, integer minor units.
 - **Client dashboard — revenue only, by design** — attributed revenue this month (hero number),
   30-day SVG chart with hover + table view, attributed-order count, full auditable order list, fee
   accrued, refund credit, invoices with Stripe links, tracking status + snippet, agreement. No

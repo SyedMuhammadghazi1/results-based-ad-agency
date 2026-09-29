@@ -85,3 +85,8 @@ in `pending_invoice` are re-issued to Stripe with the same idempotency keys.
   and send them through the S2S API (`order_id` = Shopify order id is NOT the same source — use
   the API only for orders Shopify never delivered).
 - **S2S API**: clients can resend; duplicates return `{"status":"duplicate"}`.
+- **Refunds before orders**: a refund whose order hasn't arrived is acknowledged as
+  `{"status":"pending"}` and kept in `pending_refunds` until the order is recorded (then applied
+  and deleted) or for 90 days (`cleanup`). Replaying the missing order applies them. To see what
+  is waiting:
+  `SELECT org_id, source, external_order_id, amount_minor, received_at FROM pending_refunds;`

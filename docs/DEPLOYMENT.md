@@ -127,14 +127,14 @@ Stripe account pointing at `/api/webhooks/client-stripe/<integration id>` (shown
 
 ## 6. Scheduled jobs
 
-| Job                     | Schedule (UTC)       | Purpose                                                        |
-| ----------------------- | -------------------- | -------------------------------------------------------------- |
-| `budget-guard`          | hourly (`5 * * * *`) | Refresh today's spend, pause at the cap, resume in a new month |
-| `sync-spend`            | daily 04:15          | Pull the last 3 days of spend per campaign                     |
-| `dunning`               | daily 07:30          | Pause campaigns for invoices overdue > `DUNNING_GRACE_DAYS`    |
-| `cleanup`               | daily 03:45          | Expired sessions, limiter rows, old webhook/job logs           |
-| `monthly-billing`       | 1st of month 06:00   | Statements + Stripe invoices for the previous month            |
-| `weekly-revenue-report` | Mondays 13:00        | One-number email to each client                                |
+| Job                     | Schedule (UTC)       | Purpose                                                                         |
+| ----------------------- | -------------------- | ------------------------------------------------------------------------------- |
+| `budget-guard`          | hourly (`5 * * * *`) | Refresh today's spend, pause at the cap, resume in a new month                  |
+| `sync-spend`            | daily 04:15          | Pull the last 3 days of spend per campaign                                      |
+| `dunning`               | daily 07:30          | Pause campaigns for invoices overdue > `DUNNING_GRACE_DAYS`                     |
+| `cleanup`               | daily 03:45          | Expired sessions, limiter rows, old webhook/job logs, pending refunds > 90 days |
+| `monthly-billing`       | 1st of month 06:00   | Statements + Stripe invoices for the previous month                             |
+| `weekly-revenue-report` | Mondays 13:00        | One-number email to each client                                                 |
 
 Trigger with `POST https://<APP_URL>/api/cron/<job>` and `Authorization: Bearer $CRON_SECRET`
 (Vercel Cron: `vercel.json`; GitHub Actions: `.github/workflows/cron.yml` with `vars.APP_URL` and

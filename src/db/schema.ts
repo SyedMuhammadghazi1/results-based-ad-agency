@@ -448,6 +448,45 @@ export const conversionAdjustments = pgTable(
   ],
 );
 
+export const PENDING_REFUND_KINDS = ["refund", "refund_cumulative"] as const;
+export type PendingRefundKind = (typeof PENDING_REFUND_KINDS)[number];
+
+/**
+ * Refunds that arrived before their order (Shopify and Stripe don't guarantee webhook order).
+ * They are NOT revenue adjustments — billing never reads them. `recordConversion` applies them
+ * (in the same transaction) when the order is recorded and deletes them; `cleanup` expires the
+ * ones whose order never arrives.
+ */
+export const pendingRefunds = pgTable(
+  "pending_refunds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: uuid("org_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    source: text("source").$type<ConversionSource>().notNull(),
+    externalOrderId: text("external_order_id").notNull(),
+    externalRefundId: text("external_refund_id").notNull(),
+    kind: text("kind").$type<PendingRefundKind>().notNull(),
+    /**
+     * Always positive. `refund`: revenue removed by this refund; `refund_cumulative`: Stripe's
+     * cumulative refunded amount on the charge (tax included).
+     */
+    amountMinor: money("amount_minor").notNull(),
+    /** Gross charged amount (tax included), to pro-rate a cumulative Stripe refund to revenue. */
+    chargedGrossMinor: money("charged_gross_minor"),
+    currency: text("currency").notNull(),
+    occurredAt: ts("occurred_at").notNull(),
+    receivedAt: ts("received_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("pending_refunds_dedupe_unique").on(t.orgId, t.source, t.externalRefundId),
+    index("pending_refunds_order_idx").on(t.orgId, t.source, t.externalOrderId),
+    index("pending_refunds_received_idx").on(t.receivedAt),
+    check("pending_refund_amount_positive", sql`${t.amountMinor} > 0`),
+  ],
+);
+
 // ---------------------------------------------------------------------------
 // Billing
 // ---------------------------------------------------------------------------
@@ -628,6 +667,7 @@ export const applications = pgTable("applications", {
 export type Organization = typeof organizations.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type Conversion = typeof conversions.$inferSelect;
+export type PendingRefund = typeof pendingRefunds.$inferSelect;
 export type Agreement = typeof agreements.$inferSelect;
 export type BillingPeriod = typeof billingPeriods.$inferSelect;
 export type Integration = typeof integrations.$inferSelect;

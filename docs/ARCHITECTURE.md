@@ -146,6 +146,8 @@ Request construction and response parsing for the real connectors are unit teste
 ## Security notes
 
 See [SECURITY.md](../SECURITY.md). Highlights: CSP and security headers in `next.config.ts`,
-Postgres-backed rate limits on auth and every public write endpoint, HMAC/Stripe signature checks on
+Postgres-backed rate limits on auth (per IP and per account) and every public write endpoint, keyed
+by a client IP resolved in one place (`lib/client-ip.ts`, never the spoofable leftmost
+`X-Forwarded-For` entry), HMAC/Stripe signature checks on
 raw bodies, AES-256-GCM secrets with key ids, API keys stored as SHA-256, signed + nonce-bound OAuth
 state, audit log for sensitive actions, pino log redaction, generic error pages.

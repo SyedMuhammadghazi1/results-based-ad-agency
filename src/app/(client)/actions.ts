@@ -6,7 +6,7 @@ import type { ActionState } from "@/lib/action-state";
 import { actionError, formToObject } from "@/server/actions";
 import { startPaymentMethodSetup } from "@/server/billing";
 import { requireOrgOwner, requireRole } from "@/server/guards";
-import { clientIp } from "@/server/http";
+import { clientIp } from "@/server/client-ip";
 import { ensureIntegrationRow, saveClientStripe, saveShopify } from "@/server/integrations";
 import {
   acceptAgreement,

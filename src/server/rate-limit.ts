@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
+import { ipRateLimitKey } from "@/lib/client-ip";
 
 /**
  * Postgres-backed fixed-window rate limiter. One row per key; the window resets in the same
@@ -38,6 +39,29 @@ export async function rateLimit(
     limit,
     resetAt: new Date(start.getTime() + windowSec * 1000),
   };
+}
+
+/** How much larger the one shared bucket for requests without a trusted client IP is. */
+export const UNKNOWN_IP_LIMIT_FACTOR = 20;
+
+/**
+ * Per-client-IP limit (IPv6 by /64, see `ipRateLimitKey`). When the IP is unknown (`null`):
+ * - `"skip"` — for endpoints that ALSO limit per account / org key: those limits still apply, and
+ *   unknown clients never share one bucket that a single attacker could exhaust for everyone;
+ * - `"shared"` — for endpoints whose only key is the IP: one bucket for all unknown clients with
+ *   `UNKNOWN_IP_LIMIT_FACTOR`× the limit, as a global ceiling.
+ * Returns `null` when no limit was applied.
+ */
+export async function rateLimitByIp(
+  bucket: string,
+  ip: string | null,
+  limit: number,
+  windowSec: number,
+  whenUnknown: "skip" | "shared",
+): Promise<RateLimitResult | null> {
+  if (ip) return rateLimit(bucket, ipRateLimitKey(ip), limit, windowSec);
+  if (whenUnknown === "skip") return null;
+  return rateLimit(bucket, "unknown-ip", limit * UNKNOWN_IP_LIMIT_FACTOR, windowSec);
 }
 
 export async function purgeExpiredRateLimits(olderThan: Date): Promise<number> {

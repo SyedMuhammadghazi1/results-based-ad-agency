@@ -7,8 +7,8 @@ import { applications } from "@/db/schema";
 import type { ActionState } from "@/lib/action-state";
 import { actionError, formToObject } from "@/server/actions";
 import { raiseAlert } from "@/server/alerts";
-import { clientIp } from "@/server/http";
-import { rateLimit } from "@/server/rate-limit";
+import { clientIp } from "@/server/client-ip";
+import { rateLimitByIp } from "@/server/rate-limit";
 import { REVENUE_BANDS, SPEND_BANDS } from "./bands";
 
 const applySchema = z.object({
@@ -25,9 +25,8 @@ const applySchema = z.object({
 
 export async function submitApplication(_prev: ActionState, fd: FormData): Promise<ActionState> {
   try {
-    const ip = clientIp(await headers());
-    const limit = await rateLimit("apply", ip, 5, 3600);
-    if (!limit.allowed)
+    const limit = await rateLimitByIp("apply", clientIp(await headers()), 5, 3600, "shared");
+    if (limit && !limit.allowed)
       return { ok: false, message: "Too many submissions. Please try again later." };
     const input = applySchema.parse(formToObject(fd));
     await db.insert(applications).values({

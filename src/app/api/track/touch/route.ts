@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { touchPayloadSchema } from "@/lib/tracking";
-import { clientIp, handleRouteError, jsonError, rateLimitedResponse } from "@/server/http";
-import { rateLimit } from "@/server/rate-limit";
+import { clientIp } from "@/server/client-ip";
+import { handleRouteError, jsonError, rateLimitedResponse } from "@/server/http";
+import { rateLimit, rateLimitByIp } from "@/server/rate-limit";
 import { corsHeaders, ingestTouch } from "@/server/tracking";
 
 export const dynamic = "force-dynamic";
@@ -16,8 +17,10 @@ export function OPTIONS(req: Request) {
 export async function POST(req: Request) {
   const origin = req.headers.get("origin");
   try {
-    const ipLimit = await rateLimit("touch:ip", clientIp(req.headers), 120, 60);
-    if (!ipLimit.allowed) return rateLimitedResponse(ipLimit, corsHeaders(origin, false));
+    // Unknown client IP: the per-key limit below still applies (no bucket shared by everyone).
+    const ipLimit = await rateLimitByIp("touch:ip", clientIp(req.headers), 120, 60, "skip");
+    if (ipLimit && !ipLimit.allowed)
+      return rateLimitedResponse(ipLimit, corsHeaders(origin, false));
 
     const raw = await req.text();
     if (raw.length > MAX_BODY)

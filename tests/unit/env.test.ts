@@ -71,3 +71,31 @@ describe("SKIP_ENV_VALIDATION", () => {
     expect(env.BETTER_AUTH_SECRET).toBe(VALID.BETTER_AUTH_SECRET);
   });
 });
+
+describe("client IP settings", () => {
+  const base = { ...VALID, NODE_ENV: "production" };
+
+  it("defaults to one trusted proxy hop and no platform header", () => {
+    const env = loadEnv(source(base));
+    expect(env.TRUSTED_PROXY_HOPS).toBe(1);
+    expect(env.CLIENT_IP_HEADER).toBeUndefined();
+    expect(loadEnv(source({ ...base, TRUSTED_PROXY_HOPS: "" })).TRUSTED_PROXY_HOPS).toBe(1);
+    expect(loadEnv(source({ ...base, TRUSTED_PROXY_HOPS: "0" })).TRUSTED_PROXY_HOPS).toBe(0);
+    expect(loadEnv(source({ ...base, TRUSTED_PROXY_HOPS: "2" })).TRUSTED_PROXY_HOPS).toBe(2);
+  });
+
+  it("rejects invalid hop counts", () => {
+    for (const TRUSTED_PROXY_HOPS of ["-1", "1.5", "yes"]) {
+      expect(() => loadEnv(source({ ...base, TRUSTED_PROXY_HOPS }))).toThrow(/TRUSTED_PROXY_HOPS/);
+    }
+  });
+
+  it("accepts a platform header (lower-cased) but never a client-appendable list", () => {
+    expect(loadEnv(source({ ...base, CLIENT_IP_HEADER: "X-Real-IP" })).CLIENT_IP_HEADER).toBe(
+      "x-real-ip",
+    );
+    for (const CLIENT_IP_HEADER of ["X-Forwarded-For", "forwarded", "bad header"]) {
+      expect(() => loadEnv(source({ ...base, CLIENT_IP_HEADER }))).toThrow(/CLIENT_IP_HEADER/);
+    }
+  });
+});

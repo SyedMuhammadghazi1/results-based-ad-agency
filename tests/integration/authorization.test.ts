@@ -9,7 +9,7 @@ import { GET as operatorOrgsGET } from "@/app/api/operator/orgs/route";
 import { POST as authPOST } from "@/app/api/auth/[...all]/route";
 import { GET as oauthStartGET } from "@/app/api/oauth/[provider]/start/route";
 import { db } from "@/db";
-import { billingPeriods, user } from "@/db/schema";
+import { billingPeriods, session, user } from "@/db/schema";
 import { runMonthlyBilling } from "@/jobs/monthly-billing";
 import { recordConversion } from "@/server/conversions";
 import { findOrgByApiKey } from "@/server/orgs";
@@ -22,6 +22,7 @@ import {
   jsonRequest,
   onboardedOrg,
   params,
+  PASSWORD,
   SITE,
 } from "./helpers";
 
@@ -175,6 +176,79 @@ describe("authorization", () => {
       ).status;
     }
     expect(status).toBe(429);
+  });
+
+  const signIn = (email: string, headers: Record<string, string> = {}, password = "wrong-pw-123") =>
+    authPOST(
+      jsonRequest(
+        "/api/auth/sign-in/email",
+        { email, password },
+        { origin: "http://localhost:3003", ...headers },
+      ),
+    );
+
+  it("keys the per-IP limit on the proxy's entry, not spoofed X-Forwarded-For entries", async () => {
+    // TRUSTED_PROXY_HOPS=1: only the right-most entry was written by our proxy.
+    let status = 0;
+    for (let i = 0; i < 11; i++) {
+      const xff = `10.0.${i}.1, 198.51.100.201`;
+      status = (await signIn(`spoof${i}@example.test`, { "x-forwarded-for": xff })).status;
+    }
+    expect(status).toBe(429);
+    const other = await signIn("other@example.test", { "x-forwarded-for": "198.51.100.202" });
+    expect(other.status).toBe(401);
+  });
+
+  it("rate limits sign-in per account across IPs", async () => {
+    let status = 0;
+    for (let i = 0; i < 11; i++) {
+      const xff = `198.51.100.${10 + i}`;
+      status = (
+        await signIn(i % 2 ? "Victim@Example.test" : "victim@example.test", {
+          "x-forwarded-for": xff,
+        })
+      ).status;
+    }
+    expect(status).toBe(429);
+    // Other accounts (from the same IPs) are unaffected.
+    const other = await signIn("bystander@example.test", { "x-forwarded-for": "198.51.100.10" });
+    expect(other.status).toBe(401);
+  });
+
+  it("without a trusted client IP, limits sign-in per account instead of one shared bucket", async () => {
+    // No X-Forwarded-For at all (e.g. a misconfigured proxy): one attacker must not be able to
+    // lock everybody out, but each account is still protected.
+    for (let i = 0; i < 15; i++) expect((await signIn(`anyone${i}@example.test`)).status).toBe(401);
+    let status = 0;
+    for (let i = 0; i < 11; i++) status = (await signIn("target@example.test")).status;
+    expect(status).toBe(429);
+  });
+
+  it("rate limits password-reset requests per account across IPs", async () => {
+    const statuses: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      const res = await authPOST(
+        jsonRequest(
+          "/api/auth/request-password-reset",
+          { email: "reset-me@example.test", redirectTo: "/reset-password" },
+          { origin: "http://localhost:3003", "x-forwarded-for": `198.51.100.${60 + i}` },
+        ),
+      );
+      statuses.push(res.status);
+    }
+    expect(statuses.slice(0, 3)).toEqual([200, 200, 200]);
+    expect(statuses[3]).toBe(429);
+  });
+
+  it("records the session IP with the same client-IP resolution", async () => {
+    const u = await createUser("client", "ip-check@example.test");
+    const res = await signIn(u.email, { "x-forwarded-for": "6.6.6.6, 198.51.100.77" }, PASSWORD);
+    expect(res.status).toBe(200);
+    const ips = (await db.select().from(session).where(eq(session.userId, u.id))).map(
+      (r) => r.ipAddress,
+    );
+    expect(ips).toContain("198.51.100.77");
+    expect(ips).not.toContain("6.6.6.6");
   });
 
   it("cron endpoints require the CRON_SECRET bearer token", async () => {

@@ -41,13 +41,6 @@ export function handleRouteError(err: unknown, context: string): NextResponse {
   return jsonError(500, "internal_error", "Something went wrong");
 }
 
-/** Client IP from the reverse proxy chain (first hop). Only used for rate limits and audit. */
-export function clientIp(headers: Headers): string {
-  const xff = headers.get("x-forwarded-for");
-  if (xff) return xff.split(",")[0]!.trim().slice(0, 64);
-  return headers.get("x-real-ip")?.trim().slice(0, 64) ?? "unknown";
-}
-
 export function bearerToken(headers: Headers): string | null {
   const h = headers.get("authorization");
   if (!h) return null;

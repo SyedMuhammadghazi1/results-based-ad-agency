@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SPOOFABLE_IP_HEADERS } from "@/lib/client-ip";
 
 /**
  * Centralised, validated environment configuration.
@@ -50,6 +51,23 @@ const schema = z.object({
   DATA_ENCRYPTION_PREVIOUS_KEYS: optionalString,
 
   CRON_SECRET: z.string().min(16, "must be at least 16 characters"),
+
+  /**
+   * Single header the hosting platform sets with the client IP and clients cannot spoof
+   * (`x-real-ip` on Vercel, `fly-client-ip`, `cf-connecting-ip`). Overrides TRUSTED_PROXY_HOPS.
+   */
+  CLIENT_IP_HEADER: optionalString
+    .transform((v) => v?.toLowerCase())
+    .refine((v) => v === undefined || /^[a-z0-9-]+$/.test(v), "must be a header name")
+    .refine(
+      (v) => v === undefined || !SPOOFABLE_IP_HEADERS.includes(v),
+      "clients can append to this header; use TRUSTED_PROXY_HOPS instead",
+    ),
+  /** Proxies in front of the app that append to X-Forwarded-For (0 = never trust it). */
+  TRUSTED_PROXY_HOPS: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.coerce.number().int().min(0).max(10).default(1),
+  ),
 
   STRIPE_SECRET_KEY: optionalString,
   STRIPE_WEBHOOK_SECRET: optionalString,

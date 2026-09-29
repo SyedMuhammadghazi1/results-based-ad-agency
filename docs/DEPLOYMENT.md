@@ -37,6 +37,33 @@ with a clear message if something is missing). Production minimums:
 - `AD_CONNECTOR_FALLBACK=manual` until real ad-platform credentials are approved (the sandbox
   connector must never drive real clients)
 
+### Client IP behind your proxy
+
+Rate limits (sign-in, sign-up, password reset, tracking, apply form), the audit log, agreement
+acceptance and sessions use the client IP. It is resolved in exactly one place
+(`src/lib/client-ip.ts`) from **one** of:
+
+- `CLIENT_IP_HEADER` — a single header your platform sets and clients cannot spoof. Only that
+  header is read (first value).
+- `TRUSTED_PROXY_HOPS` (default `1`) — when no header is configured: the number of proxies in front
+  of the app that append to `X-Forwarded-For`. The client IP is the entry that many positions from
+  the right; anything further left was sent by the client and is ignored. `0` never trusts it.
+
+| Host                                                    | Setting                                                                |
+| ------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Vercel                                                  | `CLIENT_IP_HEADER=x-real-ip`                                           |
+| Fly.io                                                  | `CLIENT_IP_HEADER=fly-client-ip`                                       |
+| Cloudflare (proxied DNS) in front of any host           | `CLIENT_IP_HEADER=cf-connecting-ip` — and only accept Cloudflare's IPs |
+| Render, Railway, Heroku, a single nginx / load balancer | `TRUSTED_PROXY_HOPS=1` (the default)                                   |
+| Two proxies (e.g. CDN → load balancer → app)            | `TRUSTED_PROXY_HOPS=2`                                                 |
+| Container reachable directly, without a proxy           | Not recommended; `TRUSTED_PROXY_HOPS=0` (no per-IP limits)             |
+
+nginx must append (`proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`) or overwrite
+(`$remote_addr`) the header. A wrong setting either trusts a client-controlled value or yields no
+IP: without an IP, endpoints that also limit per account or per tracking key (sign-in, sign-up,
+password reset, `/api/track/touch`) rely on those limits alone and the app logs
+`could not resolve a trusted client IP` once per process. IPv6 clients are rate limited per /64.
+
 Store secrets in the host's secret manager. Keep `DATA_ENCRYPTION_KEY` backed up separately from
 database backups — without it, stored integration secrets are unrecoverable.
 
